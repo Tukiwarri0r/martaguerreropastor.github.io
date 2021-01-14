@@ -1,0 +1,668 @@
+<!DOCTYPE HTML>
+<!--
+	Massively by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html>
+	<head>
+		<title>SINN - Cutscenes - Portfolio</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="../assets/css/main.css" />
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+		<noscript><link rel="stylesheet" href="../assets/css/noscript.css" /></noscript>
+	</head>
+	<body class="is-preload">
+
+		<!-- Wrapper -->
+			<div id="wrapper">
+
+
+				<!-- Header -->
+				<header id="header">
+					<a href="../index.html" class="logo">Portfolio</a>
+				</header>
+
+			<!-- Nav -->
+				<nav id="nav">
+					<ul class="links">
+						<li class="active"><a href="../index.html">SINN</a></li>
+					</ul>
+					<ul class="icons">
+						<li><a href="https://www.linkedin.com/in/marta-guerrero-pastor-890a7166/" class="icon brands fa-linkedin" target="_blank"><span class="label">Linkedin</span></a></li>
+						<li><a href="https://gitlab.com/martagp/portfolio" class="icon brands fa-gitlab" target="_blank"><span class="label">GitLab</span></a></li>
+					</ul>
+				</nav>
+
+				<!-- Main -->
+					<div id="main">
+
+						<!-- Post -->
+							<section class="post">
+								<header class="major">
+									<h1>Cutscenes</h1>
+								</header>
+									<p>		
+										
+											<video class ="image left" controls>
+											<source src="images/cutscene.mp4" type="video/mp4" title="normal cutscene">
+												
+											</video>					
+									
+										Making a cutscene module from zero was tricky, I had to find a way to import all object movement from 3Dmax and translate it so our engine could actually "play" a cutscene with ease. To do this there were a few things to consider:
+										Hide the real character and use a decoy that will have all the animations (really saved some possible issues with PhysX) and the possibility of "local" cutscenes, those that will be repeated all throughout the game but in different areas.
+										</p>
+										<p>	The module itself loads all the scenes, and some extra information into a map. If an event calls for a cutscene, the module will check the extra info to see if the cutscene requires hiding the character, some ui fading,
+										extra care with the camera once it's done, extra audio or light changes. 
+										</p>
+										<p>
+										The actual camera and object movement is managed by another class, the frame component. This class knows if the cutscene is absolute or local and 
+										has an array of "frames", each frame containing the position, rotation and lookat at that exact moment.
+										</p>	
+									<video class ="image right" controls>
+										<source src="images/local_cutscene.mp4" type="video/mp4" title="local cutscene">
+									  </video>
+										<br />
+										
+										<ul class="actions special">
+											<li><button class="btn toggle" data-toggle="collapse" data-target="#setup">See Setup Code</button></li>
+										</ul>
+										<pre class="collapse"  id= "setup" ><code id= "setup">
+struct cutSceneData {
+	string voice_audio;
+	string music_audio;
+	float voice_delay;
+	float music_delay;
+	bool hide_seele;
+	float time_to_hide;
+	string anim_seele;
+	float light_intensity;
+	VEC3 pos_final;
+	bool fade_in;
+	string fade_widget;
+	float fadeStart;
+	float fadeDuration;
+	int currentFocus;
+	vector<focusData> focuses;
+	bool early_return_render;
+	float time_return_render;
+	string helper;
+	bool seele_rotated;
+	VEC3 look_at;
+	bool correctCamera;
+	bool with_custom_yaw;
+	float cam_pitch;
+	float cam_yaw;
+	bool skippable;
+	string quetz_anim;
+	string golem_anim;
+	bool golem_biped;
+	};
+void CModuleCutscene::start()
+{
+
+	std::string boot_name("module_cutscene");
+	TFileContext fc(boot_name);
+	json son = loadJson("data/cutscenes.json");
+	auto prefabs = son["scenes_to_load"].get< std::vector< std::string > >();
+	for (auto& p : prefabs)
+	loadScene(p);
+	//load the additional data needed for each scene
+	if (son.count("scenes_data")) {
+	json sData = son["scenes_data"];
+	for (const json& jdata : sData) {
+		cutSceneData d;
+		string name = jdata.value("name", "");
+		d.music_audio = jdata.value("music", "");
+		d.voice_audio= jdata.value("voice_audio", "");
+		d.music_delay = jdata.value("delay_music", 0.f);
+		d.voice_delay = jdata.value("delay_voice", 0.f);
+		d.hide_seele = jdata.value("hide_seele", false);
+		d.time_to_hide = jdata.value("time_to_hide", 0.f);
+		d.anim_seele = jdata.value("anim_seele", "");
+		d.pos_final = loadVEC3(jdata, "pos_final");
+		d.fade_in = jdata.value("fade_in", false);
+		d.fade_widget = jdata.value("fade_widget", "");
+		d.fadeStart = jdata.value("fade_start", 0.0);
+		d.fadeDuration = jdata.value("fade_duration", 0.0);
+		d.early_return_render = jdata.value("early_return_render", false);
+		d.time_return_render = jdata.value("time_return_render", 0.f);
+		d.helper = jdata.value("helper", "");
+		d.seele_rotated = jdata.value("seele_rotated", false);
+		d.look_at = loadVEC3(jdata, "look_at");
+		d.cam_pitch = jdata.value("cam_pitch",0.f);
+		d.cam_yaw = jdata.value("cam_yaw", 0.f);
+		d.light_intensity = jdata.value("intensity_light", 2.68f);
+		d.correctCamera = jdata.value("correct_camera", false);
+		d.with_custom_yaw = jdata.value("custom_yaw", false);
+		d.skippable = jdata.value("skippable", true);
+		d.quetz_anim = jdata.value("quetz_anim", "");
+		d.golem_anim = jdata.value("golem_anim", "");
+		d.golem_biped = jdata.value("golem_biped", true);
+
+		if (jdata.count("focuses")) {
+		json foc = jdata["focuses"];
+		for (const json& jFocus : foc) {
+			focusData f;
+			f.timeStart = jFocus.value("start", 0.f);
+			f.globalDistance = jFocus.value("global_distance", 0.f);
+			d.focuses.push_back(f);
+		}
+		d.currentFocus = 0;
+		}
+		cutScenes.emplace(name,d);
+	}
+	}
+	//keep a fake version of Seele in case they are animated in the cutscene and prevent them from rendering
+	fakeSeele = getEntityByName("fakeSeele");
+	CEntity* e = fakeSeele;
+	TCompRender* r = e->get<TCompRender>();
+	r->activateState(10);
+
+}
+
+void CModuleCutscene::loadScene(const std::string& p) {
+
+	TEntityParseContext ctx;
+	PROFILE_FUNCTION_COPY_TEXT(p.c_str());
+	dbg("Parsing %s\n", p.c_str());
+	parseScene(p, ctx);
+	std::string name = ctx.filename;
+	name.erase(0,15);
+	name.erase(name.size()-5, name.size());
+	ctxs.emplace(name,ctx);
+}
+										</code></pre>
+								
+										<ul class="actions special">
+											<li><button class="btn toggle" data-toggle="collapse" data-target="#play">See Prepare and Play Cutscene Code</button></li>
+										</ul>
+										<pre class="collapse"  id= "play" ><code id= "play">
+
+void CModuleCutscene::startCutscene(string name)
+{
+	if (!id.empty())return;//check that no cutscene is playing already
+	if (CApplication::get().getWithoutCutscenes())return;
+	bool found =false;
+	for (auto e : ctxs) {
+	if (e.first.compare(name) == 0) found = true;
+	}
+	if (!found)return;
+
+	cutSceneData d = cutScenes.at(name);
+	//some cutscenes have a fadeIn widget
+	if (d.fade_in) {
+	CEngine::get().getUI().activateWidget(d.fade_widget);
+	CEngine::get().getUI().getWidgetById(d.fade_widget)->makeChildsFadeOut(d.fadeDuration,d.fadeStart , false);
+	}
+	//force player to go into Idle state
+	CEntity* pl = getEntityByName("Player");
+	TCompPlayer* player = pl->get<TCompPlayer>();   
+	player->setInCutscene(true);
+	
+	skipped = false;
+	//activate each element in cutscene
+	for (auto e : ctxs) {
+	if (e.first.compare(name) == 0) {
+		id = e.first;
+		for (auto n : e.second.entities_loaded) {
+		CEntity* entity = n;
+				
+		TCompFrames* frames = entity->get<TCompFrames>();
+		if (frames)frames->activate();
+
+		current_cutscene = name;
+		}
+	}
+
+	}
+}
+
+void CModuleCutscene::prepareCutscene()
+{
+	cutSceneData data = cutScenes.at(id);
+
+	//if Seele has an animation reproduce it
+	if (data.anim_seele != "") {
+	CEntity* e = fakeSeele;
+
+	//render fake Seele
+	TCompRender* r = e->get<TCompRender>();
+	r->activateState(0);
+	//animate cutscene animation
+	TCompAnimator* anim = e->get<TCompAnimator>();
+	anim->removeAllCycles();
+	anim->removeCurrentAction();
+	anim->playActionAnim(data.anim_seele, false, false, false);
+	//turn on fake Seele's face light
+	TCompLightPoint* light = e->get<TCompLightPoint>();
+	light->turnLight(true);
+	light->setIntensity(data.light_intensity);
+	}
+	//check if Quetz also animates 
+	if (!data.quetz_anim.empty()) {
+	CEntity* quetz = getEntityByName("Quetz");
+	TCompAnimator* anim = quetz->get<TCompAnimator>();
+	anim->removeAllCycles();
+	anim->removeCurrentAction();
+	anim->playActionAnim(data.quetz_anim, false, false, false);
+	}
+	//same for Golem
+	if (!data.golem_anim.empty()) {
+	CEntity* golem;
+	if (data.golem_biped)golem = getEntityByName("Golem");
+	else golem = getEntityByName("golem_down");
+	TCompAnimator* anim = golem->get<TCompAnimator>();
+	anim->removeAllCycles();
+	anim->removeCurrentAction();
+	anim->playActionAnim(data.golem_anim, false, false, false);
+	}
+	//send event to LUA so that voice and music will be played if there is any
+	string e_name;
+	e_name.push_back('"');
+	e_name.append(data.voice_audio);
+	e_name.push_back('"');
+	e_name.push_back(',');
+	e_name.push_back('"');
+	e_name.append(to_string(data.voice_delay));
+	e_name.push_back('"');
+	e_name.push_back(',');
+	e_name.push_back('"');
+	e_name.append(data.music_audio);
+	e_name.push_back('"');
+	e_name.push_back(',');
+	e_name.push_back('"');
+	e_name.append(to_string(data.music_delay));
+	e_name.push_back('"');
+	std::string event_name = e_name;
+	CEngine::get().getScripting().ThrowEvent(CModuleScripting::Event::CUTSCENE_AUDIO, event_name, 0);
+	first = false;
+	//if the cutscene requires a fake main character, the real one will not be rendered
+	if (data.correctCamera) {
+	CEntity* pl = getEntityByName("Player");
+	TCompTransform* trans = pl->get<TCompTransform>();
+	float yaw, pitch, roll;
+	trans->getEulerAngles(&yaw, &pitch, &roll);
+	float p = data.cam_pitch;
+	float y = yaw;
+	if (data.with_custom_yaw)y = data.cam_yaw;
+	bool block = true;
+	getObjectManager<TCompCamera3D>()->forEach([block, p, y](TCompCamera3D* c) {
+		c->blockMovement(block, p, y);
+		});
+	}
+	
+	SoundEvent* bso = CEngine::get().getSound().getBSO();
+	if (bso) {
+	string name = bso->getName();
+	if (name.compare("Temple") == 0)
+		bso->setParameter("cutscene", 1);
+	}
+	CEngine::get().getModules().changeToGamestate("GScutscene");
+
+}
+
+void CModuleCutscene::hideRealSeele()
+{
+  CEntity* pl = getEntityByName("Player");
+  TCompRender* rend = pl->get<TCompRender>();
+  rend->activateState(10);
+
+  cutSceneData data = cutScenes.at(id);
+  hidden = true;
+  //if fake Seele moves, once we get control back Seele should be where fake was 
+  std::stringstream coords;
+  coords << data.pos_final.x << ',' << data.pos_final.y << ',' << data.pos_final.z;
+  CEngine::get().getScripting().ThrowEvent(CModuleScripting::Event::TELEPORT_PLAYER, coords.str(), 0);
+
+  if (data.seele_rotated) {
+    //at the end of the cutscene we sometimes want Seele at a certain angle, the camera3D will also need to be positioned
+    //at a certain angle and with its movement blocked during the cutscene
+    TCompTransform* trans = pl->get<TCompTransform>();
+    trans->lookAt(data.pos_final, data.look_at);
+    float p = data.cam_pitch;
+    float y = data.cam_yaw;
+    bool block = true;
+    getObjectManager<TCompCamera3D>()->forEach([block, p, y](TCompCamera3D* c) {
+      c->blockMovement(block, p, y);
+      });
+  }
+}
+
+void CModuleCutscene::update(float elapsed)
+{
+  PROFILE_FUNCTION("cutscenes");
+
+  if (CApplication::get().getInPause()) {
+      
+    pauseSound();
+    return;
+  }
+  else {
+    unPauseSound();
+  }
+
+  if (!initialized) {
+    CEntity* mixed = getEntityByName("mixed_camera");
+    TCompRenderFocus* m_focus = mixed->get<TCompRenderFocus>();
+    original_focus_distance = m_focus->distance;
+    initialized = true;
+  }
+  if (done) {
+    if (!first) {
+
+      if (ui_skip) {
+        ui::CImage* widget = (ui::CHelpers*) CEngine::get().getUI().getWidgetById("skipscene");
+        widget->fadeOut(0.3f, 0.f);
+        ui_timer = 0;
+      }
+      //if no helper is needed after cutscene, we'll return to gameplay, otherwise we'll start the helper 
+      if (cutScenes.at(id).helper.empty())returntoGamePlay();
+      else {
+        
+        currentHelper = cutScenes.at(id).helper;
+        ui::CHelpers* widget = (ui::CHelpers*) CEngine::get().getUI().getWidgetById("tutorial_helpers");
+        widget->start(currentHelper.c_str());
+        CEngine::get().getModules().changeToGamestate("GSHelper");
+      }
+    }
+    if (ui_skip)ui_timer += elapsed;
+    if (ui_timer > 0.3f) {
+      ui_skip = false;
+      CEngine::get().getUI().deactivateWidget("skipscene");
+    }
+    time = 0;
+    first = true;
+    rendered = false;
+  }
+  else {
+    time += elapsed;
+    cutSceneData d = cutScenes.at(id);
+    if (input.anyPressed() && time>0.5 && !ui_skip && d.skippable) {
+        CEngine::get().getUI().activateWidget("skipscene");
+        ui::CImage* widget = (ui::CImage*) CEngine::get().getUI().getWidgetById("skipscene");
+        widget->fadeIn(0.3f, 0.f);
+        ui_skip = true;
+        skip_shown = 0.f;
+    }
+    if (ui_skip)skip_shown += elapsed;
+    if (skip_shown > 2.f && ui_skip) {
+      ui::CImage* widget = (ui::CImage*) CEngine::get().getUI().getWidgetById("skipscene");
+      widget->fadeOut(0.3f, 0.f);
+      ui_skip = false;
+    }
+    if (input["skip"].justPressed() && d.skippable) {
+      if (!id.empty()) {
+        skipCutscene();
+      }
+    }
+    if (first) {
+      prepareCutscene();
+    }
+    //sometimes we want to hide seele at a certain time
+
+    if (d.hide_seele && time>=d.time_to_hide && !hidden) {
+      hideRealSeele();
+    }
+    //sometimes we want real Seele to return early in the cutscene
+    if (d.early_return_render && time >= d.time_return_render && !rendered) {
+        CEntity* player = getEntityByName("Player");
+        TCompRender* rend = player->get<TCompRender>();
+        rend->activateState(0);
+        rendered = true;
+          
+        CEntity* e = fakeSeele;
+        TCompRender* r = e->get<TCompRender>();
+        r->activateState(10);
+
+        
+    }
+
+    if (d.focuses.size() != 0) {
+      changeFocus();
+    }
+  }
+
+  
+}
+										</code></pre>
+											
+
+											
+										<ul class="actions special">
+											<li><button class="btn toggle" data-toggle="collapse" data-target="#end">See Skip and return to Gameplay Code</button></li>
+										</ul>
+										<pre class="collapse"  id= "end" ><code id= "end">
+void CModuleCutscene::skipCutscene()
+{
+	if (id == "")return;
+	cutSceneData d = cutScenes.at(id);
+	CEngine::get().getSound().forceStopEvent(d.music_audio);
+	CEngine::get().getSound().forceStopEvent(d.voice_audio);
+	//in case helpers are shown after cutscene, return real Seele
+	if (d.hide_seele) {
+	CEntity* player = getEntityByName("Player");
+	TCompRender* rend = player->get<TCompRender>();
+	rend->activateState(0);
+
+	}
+	//in case helpers are shown after cutscene, stop render of fake Seele if used
+	if (d.anim_seele != "") {
+	CEntity* e = fakeSeele;
+	TCompRender* r = e->get<TCompRender>();
+	r->activateState(10);
+
+	}
+	//skip all elements in cutscene
+	for (auto e : ctxs) {
+	if (e.first.compare(id) == 0) {
+		
+		for (auto n : e.second.entities_loaded) {
+		CEntity* entity = n;
+
+		TCompFrames* frames = entity->get<TCompFrames>();
+		if (frames)frames->skip();
+
+		current_cutscene = "";
+		}
+		return;
+	}
+
+	}
+	skipped = true;
+}
+
+void CModuleCutscene::returntoGamePlay()
+{
+	//return focus back to gameplay focus
+	changeFocus();
+
+	CEntity* player = getEntityByName("Player");
+	cutSceneData data = cutScenes.at(id);
+	
+	TCompPlayer* c_p = player->get<TCompPlayer>();
+	c_p->setInCutscene(false);
+	data.currentFocus = 0;
+	//if main character was hidden, unhide them
+	if (data.hide_seele) {
+	TCompRender* rend = player->get<TCompRender>();
+	rend->activateState(0);
+		
+	}
+	//stop render of fake Seele if used
+	if (data.anim_seele != "") {
+	CEntity* e = fakeSeele;
+	TCompRender* r = e->get<TCompRender>();
+	r->activateState(10);
+	//turn off fake seele's face light
+	TCompLightPoint* light = e->get<TCompLightPoint>();
+	light->turnLight(false);
+		
+	}
+	hidden = false;
+	if (data.seele_rotated) {
+	//unblock camera3D movement
+	float p = data.cam_pitch;
+	float y = data.cam_yaw;
+	bool block = false;
+	getObjectManager<TCompCamera3D>()->forEach([block, p, y](TCompCamera3D* c) {
+		c->blockMovement(block, p, y);
+		});
+	}
+	//return to main music
+	CEntity* b = getEntityByName("Boss");
+	CAI_Controller* ai = b->get<CAI_Controller>();
+	if (ai->isPlayerInRangeForMusic()) {
+	CEngine::get().getSound().playBSO("guardiansBSO");
+	ai->setGuardiansBSO(CEngine::get().getSound().getBSO());
+	}
+	else if (id.compare("Cinevento_Escalera_ENGINE") != 0) {
+	CEngine::get().getSound().playBSO("Temple");
+	SoundEvent* bo = CEngine::get().getSound().getBSO();
+	if (id.compare("03_Intro_Mision_ENGINE") != 0) bo->setParameter("intro", 0);
+	}
+	if (!ai->isPlayerInRangeForMusic())ai->setGuardiansBSO(nullptr);
+	SoundEvent* bso = CEngine::get().getSound().getBSO();
+	string name = bso->getName();
+	if (name.compare("Temple") == 0) {
+	bso->setParameter("cutscene", 0);
+	}
+	if (id.compare("Cinevento_Escalera_ENGINE") == 0)destroyStairs();
+	//return control back to Player
+	CEngine::get().getModules().changeToGamestate("gameplay");
+	id = "";
+
+
+}											
+										</code></pre>
+										<ul class="actions special">
+											<li><button class="btn toggle" data-toggle="collapse" data-target="#frames">See camera and object frame management Code</button></li>
+										</ul>
+										<pre class="collapse"  id= "frames" ><code id= "frames">										
+void TCompFrames::update(float dt)
+{
+	PROFILE_FUNCTION("frames");
+	if (first) {
+		initialize();
+		first = false;
+	}
+	if (!activated)return;
+	
+	totalTime = keys.size() / frame_rate;
+	time += dt;
+	int step = (int)(time * frame_rate);
+
+
+
+	indice += step;
+
+	time -= step / frame_rate;
+	//float timestamp = indice / frame_rate;
+	if (indice<keys.size()) {
+
+		if (step > 0) {
+			/*GLOBAL CUTSCENES*/
+			VEC3 pos = keys.at(indice).position;
+			VEC4 rot = keys.at(indice).rotation;
+			VEC3 look = keys.at(indice).lookat;
+			/*LOCAL CUTSCENES*/
+			if (use_player_pos) {
+
+				CEntity* player = getEntityByName("Player");
+				TCompTransform* t_player = player->get<TCompTransform>();
+	
+					
+					pos.x =  t_player->getPosition().x + keys.at(indice).position.z * cos(angle) + keys.at(indice).position.x * sin(angle);
+					pos.z= t_player->getPosition().z + keys.at(indice).position.z * sin(angle) - keys.at(indice).position.x * cos(angle);
+					pos.y =  keys.at(indice).position.y + t_player->getPosition().y;
+
+					look.x=t_player->getPosition().x + keys.at(indice).lookat.z * cos(angle) + keys.at(indice).lookat.x * sin(angle);
+					look.z=	t_player->getPosition().z + keys.at(indice).lookat.z * sin(angle) - keys.at(indice).lookat.x * cos(angle);
+					look.y =keys.at(indice).lookat.y + t_player->getPosition().y;
+				
+
+			}
+			
+			CTransform new_trans;
+			new_trans.setPosition(pos);
+			new_trans.setRotation(rot);
+			
+			TCompTransform* trans = get<TCompTransform>();
+			trans->set(new_trans);
+			TCompCamera* cam = get<TCompCamera>();
+			TCompLight* light = get<TCompLight>();
+			if (cam) {
+				CEntity* mixed_camera = getEntityByName("mixed_camera");
+				TCompCamera* m_cam = mixed_camera->get<TCompCamera>();
+				TCompTransform* m_trans = get<TCompTransform>();
+				//m_cam->setProjectionParams(cam->getFov(), 1.66f, cam->getNear(), 90);
+			
+				trans->lookAt(trans->getPosition(),look);
+				m_trans->lookAt(trans->getPosition(), look);	
+				cam->targetdistance = VEC3::DistanceSquared(trans->getPosition(), look);
+			}
+			else if (light) {
+				TCompTransform* m_trans = get<TCompTransform>();
+				trans->lookAt(pos, look);
+				m_trans->lookAt(pos, look);
+			}
+			
+		}
+
+
+	}
+	else {
+		end();
+	}
+	
+}
+										</code></pre>									
+							</section>
+
+					</div>
+
+								<!-- Footer -->
+								<footer id="footer">
+									<section class="split contact">
+										<section>
+											<h3>Email</h3>
+											<p><a href="mailto: marta@guerrerog.org">marta@guerrerog.org</a></p>
+										</section>
+										<section>
+											<h3>Social</h3>
+											<ul class="icons alt">
+												<li><a href="https://www.linkedin.com/in/marta-guerrero-pastor-890a7166/" class="icon brands fa-linkedin" target="_blank"><span class="label">Linkedin</span></a></li>
+												<li><a href="https://gitlab.com/martagp/portfolio" class="icon brands fa-gitlab" target="_blank"><span class="label">GitLab</span></a></li>
+											</ul>
+										</section>
+									</section>
+								</footer>
+			
+							<!-- Copyright -->
+								<div id="copyright">
+									<ul><li>&copy; Marta Guerrero Pastor Portfolio</li><li>Design: <a href="https://html5up.net">Made with HTML5 UP</a></li></ul>
+								</div>
+			
+
+			</div>
+
+		<!-- Scripts -->
+		<script>
+			$(document).ready(function(){
+			  $(".toggle").click(function(){
+				$(".collapse").collapse('toggle');
+			  });
+			});
+			</script>
+			<script src="assets/js/jquery.min.js"></script>
+			<script src="assets/js/jquery.scrollex.min.js"></script>
+			<script src="assets/js/jquery.scrolly.min.js"></script>
+			<script src="assets/js/browser.min.js"></script>
+			<script src="assets/js/breakpoints.min.js"></script>
+			<script src="assets/js/util.js"></script>
+			<script src="assets/js/main.js"></script>
+
+	</body>
+</html>

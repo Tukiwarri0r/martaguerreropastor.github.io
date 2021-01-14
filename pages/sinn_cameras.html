@@ -1,0 +1,688 @@
+<!DOCTYPE HTML>
+<!--
+	Massively by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html>
+	<head>
+		<title>SINN - Cameras - Portfolio</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="../assets/css/main.css" />
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+		<noscript><link rel="stylesheet" href="../assets/css/noscript.css" /></noscript>
+	</head>
+	<body class="is-preload">
+
+		<!-- Wrapper -->
+			<div id="wrapper">
+
+
+				<!-- Header -->
+				<header id="header">
+					<a href="../index.html" class="logo">Portfolio</a>
+				</header>
+
+			<!-- Nav -->
+				<nav id="nav">
+					<ul class="links">
+						<li class="active"><a href="../index.html">SINN</a></li>
+					</ul>
+					<ul class="icons">
+						<li><a href="https://www.linkedin.com/in/marta-guerrero-pastor-890a7166/" class="icon brands fa-linkedin" target="_blank"><span class="label">Linkedin</span></a></li>
+						<li><a href="https://gitlab.com/martagp/portfolio" class="icon brands fa-gitlab" target="_blank"><span class="label">GitLab</span></a></li>
+					</ul>
+				</nav>
+
+				<!-- Main -->
+					<div id="main">
+
+						<!-- Post -->
+							<section class="post">
+								<header class="major">
+									<h1>Cameras and Movement</h1>
+								</header>
+								<h3>3D Camera</h3>
+									<p>								
+									<video class ="image left" controls>
+										<source src="images/3Dcamera.mp4" type="video/mp4">
+									  </video>
+										Simple 3D camera that changes different curves when player is walking, running or in stealth mode. The camera doesn't look directly at the main character, but a little to their right.  </p>
+										<br />
+										
+										
+								
+										<ul class="actions special">
+											<li><button class="btn toggle" data-toggle="collapse" data-target="#camera3D_code">See Code</button></li>
+										</ul>
+										<pre class="collapse"  id= "camera3D_code" ><code id= "camera3D_code">#include "common.h"
+void TCompCamera3D::load(const json& j, TEntityParseContext& ctx)
+{
+
+	target_name = j.value("target", target_name);
+
+	curveFilename = j["curve"];
+	curve = Resources.get(curveFilename)->as<CCurve>();
+
+	farCurveFilename = j.value("farCurve", farCurveFilename);
+	if (farCurveFilename != "") {
+		farCurve = Resources.get(farCurveFilename)->as<CCurve>();
+	}
+
+	offset = j.value("offset", offset);
+	height = j.value("height",height);
+	leftOffset = j.value("leftOffset", leftOffset);
+	uses_camera_left = j.value("usesCameraLeft", uses_camera_left);
+	_pitchRatio = j.value("pitchRatio", _pitchRatio);
+	_sensitivity = j.value("sensitivity", _sensitivity);
+	_padSensitivity = j.value("padsensitivity", _padSensitivity);
+	camera_name = j.value("name", camera_name);
+}
+
+void TCompCamera3D::update(float scaled_dt)
+{
+
+	timer_projection += scaled_dt;
+
+	CEntity* hplayer = (CEntity*)getEntityByName("Player");
+	TCompPlayer* comp_player = hplayer->get<TCompPlayer>();
+	CEntity* player_entity;
+	TCompTransform* player_trans;
+	TCompTransform* camera_trans = get<TCompTransform>();
+	CEntity* hCamDir = (CEntity*)getEntityByName("camera_direction");
+	if (!camera_trans) return;
+
+	//get target entity
+	fetchTarget();
+
+	player_entity = target;
+	if (!player_entity) return; //the target takes one frame to exist, so we wait until it exists
+	player_trans = player_entity->get<TCompTransform>();
+	
+	if (comp_player->getModoCamera() == CAM3D /*|| !comp_player->focusToShadow()*/) {
+		//leo el input del movimiento del raton
+		readInput(scaled_dt);
+		without_init = true;
+		//dbg("I'm in 3D mode\n");
+	}
+	else {
+
+		if (without_init) {
+			timer_projection = 0;
+			without_init = false;
+			//dbg("Just started 2D mode\n");
+		}
+
+		if (timer_projection >= time_to_changeCamera) {
+			
+			CEntity* hCam2d = (CEntity*)getEntityByName("camera2D");
+			TCompTransform* cam2d_trans = hCam2d->get<TCompTransform>();
+			float yaw2d, pitch2d;
+			cam2d_trans->getEulerAngles(&yaw2d, &pitch2d, nullptr);
+			_yaw = yaw2d;
+			_replacePitch = pitch2d;
+		}
+		else {
+			//dbg("I'm in 2D mode but I haven't change cameras yet\n");
+		}
+
+	}
+
+
+	TCompCamera* myCam = get<TCompCamera>();//para hacer los calculos de las colisiones luego
+	VEC3 oldPos = camera_trans->getPosition();//para interpolar
+
+	
+	const MAT44 tr = MAT44::CreateTranslation({ 0.f, 0.f, offset });
+	const MAT44 rt = MAT44::CreateFromYawPitchRoll(_yaw, _replacePitch, 0.f);
+	_replacePitch = 0.f;
+	MAT44 world;
+	
+		
+	VEC3 curvePos, newLookAt;
+
+	world = rt * tr * MAT44::CreateScale(player_trans->getScale())
+		* MAT44::CreateFromQuaternion(QUAT(0, 0, 0, 0))
+		* MAT44::CreateTranslation(player_trans->getPosition());
+
+	//la curva se evalua en funcion de la matriz y el input vertical del movimiento del raton
+	float yawcam, pitchcam;
+	camera_trans->getEulerAngles(&yawcam, &pitchcam, nullptr);
+	float yawCam_deg = rad2deg(yawcam);	
+
+	float yawPlayer, pitchPlayer;
+	player_trans->getEulerAngles(&yawPlayer, &pitchPlayer, nullptr);
+	float yawPlayer_deg = rad2deg(yawPlayer);
+
+
+	curvePos = calculateCurvePos(world, yawCam_deg, yawPlayer_deg);
+	//curvePos = curve->evaluate(world, _pitchRatio);
+
+
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// MAKE CAMERA LOOK TO THE RIGHT OF THE PLAYER
+
+	TCompTransform* camDir_trans = hCamDir->get<TCompTransform>();
+
+	newLookAt = player_trans->getPosition() - camDir_trans->getLeft() * leftOffset;
+	newLookAt.y += 1;
+
+	curvePos = curvePos - camDir_trans->getLeft() * leftOffset;
+
+	
+
+	//check camera collisions
+	VEC3 newPos = myCam->HandleCollisionZoom(curvePos, newLookAt, 0.3);
+
+	if (newPos != curvePos) {
+		hitCamera = true;
+	}
+	else {
+		hitCamera = false;
+	}
+
+
+	//interpolate
+	VEC3 camPos = 0.8f * oldPos + 0.2f * newPos;
+	VEC3 lookAt = 0.8f * oldLookAt + 0.2f * newLookAt;
+	
+	camera_trans->lookAt(camPos , lookAt);
+	oldLookAt = lookAt;
+
+}
+
+void TCompCamera3D::registerMsgs()
+{
+	DECL_MSG(TCompCamera3D, TMsgTargetChange, addEnemyTarget);
+	
+}
+
+
+
+
+void TCompCamera3D::readInput(float dt)
+{
+	input::CInputModule& input = CEngine::get().getInput();
+
+	if (cameraFixed) return;
+
+	if (input["camera_x"].isPressed() or input["camera_y"].isPressed()) {
+		VEC2 mOff = VEC2(input["camera_x"].value, input["camera_y"].value);
+		mOff *= _padSensitivity;
+		_yaw += mOff.x * _sensitivity * 3;
+		_pitchRatio += mOff.y * _sensitivity;
+	}
+	else {
+		VEC2 mOff = input.getMouse().deltaPosition * 10; // multiply the mouse input so the camera doesn't go extremeley slow
+		_yaw += -mOff.x * _sensitivity * 3;
+		_pitchRatio += mOff.y * _sensitivity;
+	}
+
+	_pitchRatio = clamp(_pitchRatio, 0.f, 1.f);
+}
+
+
+void  TCompCamera3D::fetchTarget()
+{
+
+	target = getEntityByName(target_name);
+}
+
+VEC3 TCompCamera3D::calculateCurvePos(MAT44 world, float yawCamera, float yawPlayer)
+{
+	//if there's no far curve, go back to normal curve
+	if (farCurve == nullptr) {
+		using_far = false;
+		return curve->evaluate(world, _pitchRatio);
+	}
+
+	//default values when angle to player is 0
+	//left to centre
+	float limLateral = 90;
+	float limCentral = 180;
+	//right to centre
+	float limLateral2 = -90;
+	float limCentral2 = -180;
+
+	if (yawPlayer != 0) {
+		calculateLimitsFarCam(yawPlayer, &limCentral, &limLateral, &limLateral2);
+		limCentral2 = limCentral;
+	}
+	float weight = calculateWeightFarCam(yawCamera, limCentral, limCentral2, limLateral, limLateral2);
+
+	// Variables debug
+	lc = limCentral;
+	l1 = limLateral;
+	l2 = limLateral2;
+	////////////////////
+
+
+	//if weight is 0 no blending needed
+	if (weight < 0) {
+		using_far = false;
+		return curve->evaluate(world, _pitchRatio);
+	}
+	else {
+		VEC3 curveStealthPos = curve->evaluate(world, _pitchRatio);
+		VEC3 curveFarStealthPos = farCurve->evaluate(world, _pitchRatio);
+
+		using_far = true;
+		return VEC3::Lerp(curveStealthPos, curveFarStealthPos, weight);
+	}
+
+}
+
+void TCompCamera3D::calculateLimitsFarCam(float yawPlayer, float* limitCentral, float* limitLat1, float* limitLat2)
+{
+	float c1 = 180, c2 = -180, c3 = 90, c4 = -90;
+
+	if (yawPlayer < 0) {
+
+		*limitCentral = c1 - std::abs(yawPlayer);
+		*limitLat1 = *limitCentral - c3;
+		*limitLat2 = *limitCentral - c4;
+		if (*limitLat2 > c1) {
+			*limitLat2 = c2 + (*limitLat2 - c1);
+		}
+
+	}
+	else {
+
+		*limitCentral = c2 + yawPlayer;
+		*limitLat1 = *limitCentral - c3;
+		if (*limitLat1 < c2) {
+			*limitLat1 = c1 - std::abs(*limitLat1 - c2);
+		}
+		*limitLat2 = *limitCentral - c4;
+	}
+}
+
+float TCompCamera3D::calculateWeightFarCam(float yawCamera, float limitCentral, float limitCentral2, float limitLat1, float limitLat2)
+{
+	float w;
+
+	if (isInRange(limitCentral, limitLat1, yawCamera)) {
+
+		float c = limitCentral;
+		float l = limitLat1;
+		float yc = yawCamera;
+
+		int qLat = checkQuadrant(limitLat1);
+		int qCen = checkQuadrant(limitCentral);
+
+
+		if (qLat == 2 && qCen == 4) {
+			c = 180;
+			l = 90;
+			if (yawCamera > 0) {
+				yc = l + (yawCamera- limitLat1);
+			}
+			else {
+				yc = c - abs(limitCentral - yawCamera);
+			}
+		}
+		else if (qLat == 4 && qCen == 2) {
+			c = 90;
+			l = 180;
+
+			if (yawCamera > 0) {
+				yc = c + (yawCamera - limitCentral);
+			}
+			else {
+				yc = l - abs(limitLat1 - yawCamera);
+			}
+		}
+
+
+		c -= 15;
+		if (c < (-180))	c = -180;
+
+		w = (100 * (yc - l)) / (c - l);
+		w = w / 100; // Pasamos el peso a 0.0 -> 1.0
+
+		if (w > 1)	w = 1;
+		if (w < 0)	w = 0;
+
+		weightDebug = w;
+
+	}
+	else if (isInRange(limitCentral2, limitLat2, yawCamera)) {
+
+		float c = limitCentral2;
+		float l = limitLat2;
+		float yc = yawCamera;
+
+		int qLat = checkQuadrant(limitLat2);
+		int qCen = checkQuadrant(limitCentral2);
+
+
+		if (qLat == 2 && qCen == 4) {
+			c = 180;
+			l = 90;
+
+bool TCompCamera3D::isInRange(float limitCentral, float limitLat, float yawCamera)
+{
+
+	//Check if camera is in cuadrants 2 and 4 
+	//it will give us the range limit from 180, -180 to limit
+
+	int qLat = checkQuadrant(limitLat);
+	int qCen = checkQuadrant(limitCentral);
+
+	float min, max;
+
+	if (qLat == 2 && qCen == 4 || qLat == 4 && qCen == 2) {
+
+		if (qLat == 4) {
+			min = limitLat;
+			max = limitCentral;
+		}
+		else {
+			min = limitCentral;
+			max = limitLat;
+		}
+
+		if ((yawCamera >= max && yawCamera <= 180) || (yawCamera >= -180 && yawCamera <= min))	return true;
+		else return false;
+	}
+	else {
+		if (limitCentral > limitLat) {
+			min = limitLat;
+			max = limitCentral;
+		}
+		else {
+			min = limitCentral;
+			max = limitLat;
+		}
+
+		if (yawCamera >= min && yawCamera <= max)	return true;
+		else return false;
+
+	}
+
+	return false;
+}
+
+int TCompCamera3D::checkQuadrant(float yaw)
+{
+
+	if (yaw >= 0 && yaw <= 90)	return 1;
+	if (yaw > 90 && yaw <= 180)	return 2;
+	if (yaw < 0 && yaw >= -90)	return 3;
+	if (yaw < -90 && yaw >= -180) return 4;
+	else return 0;
+
+}
+											
+											</code></pre>
+											<hr />
+											<h3>2d Camera</h3>
+								<p>								
+								<video class ="image right" controls>
+									<source src="images/2Dcamera.mp4" type="video/mp4">
+									</video>
+									This camera was trickier, as "2D mode" is actually controlling the main character's shadow. The camera had to always look at the shadow in the wall, but never lose sight of the 3D body. </p>
+									
+									<br /><br />
+									
+											<ul class="actions special">
+												<li><button class="btn toggle" data-toggle="collapse" data-target="#2D_Camera">See Code</button></li>
+											</ul>
+											<pre class="collapse"  id= "2D_Camera" ><code id= "2D_Camera">
+//the camera will focus on the shadow of the player but with the body of the player in sight
+void TCompCamera2D::renderCam2D(VEC3 wall_normal, VEC3 wall_point)
+{
+	TCompPlayer* player = hplayer->get<TCompPlayer>();
+	TCompTransform* c_transform = get<TCompTransform>();
+	TCompTransform* htrans = hplayer->get<TCompTransform>();
+	TCompCamera* myCam = get<TCompCamera>();
+
+	if (!c_transform) return;
+	VEC3 oldPos = c_transform->getPosition();
+
+	VEC3 newPos, look;
+
+	//am I going left to right
+			//we calculate the distance from the shadow to the body
+	distance_shadow_body = VEC3::Distance(htrans->getPosition(), wall_point);
+	distance_shadow_body = float_one_point_round(distance_shadow_body);
+	
+	/* if (distance_shadow_body > 30)
+		distance_shadow_body *=0.8;*/
+		//we try to get a line that goes from the body or shadow to wherever we want the camera to go
+	s = (distance_shadow_body / 2) / sen20;
+	//with that s, we get the line that goes from the center point of shadow and body to S in what should be a circle that englobes shadow, body and camera
+	distance_center_line = s * cos20;
+	distance_center_line = float_one_point_round(distance_center_line);
+	//to make sure the camera doesn't go behind the wall we check both possible camera points and the closest to a point outside the wall will be the chosen one
+	VEC3 wall_normal_2;
+	wall_normal_2 = wall_normal * 2; //a point outside the wall, using its normal
+	float radius = s * sen20 / sen140; //this will be the radius of the circle that englobes shadow, player and camera
+	//we get the centre point between shadow and body
+
+	float distance_centre_pointX = (htrans->getPosition().x + wall_point.x) / 2;
+	float distance_centre_pointZ = (htrans->getPosition().z + wall_point.z) / 2;
+	//and the perpendicular vector of the line that goes from shadow to body
+	float perpendicular_distanceX = -(wall_point.z - htrans->getPosition().z) / distance_shadow_body;
+	float perpendicular_distanceZ = (wall_point.x - htrans->getPosition().x) / distance_shadow_body;
+	//we try to get the centre of the circle that englobes shadow, body and camera, there are two possibilities
+	VEC3 centrePoint = VEC3(distance_centre_pointX, htrans->getPosition().y + 1, distance_centre_pointZ) + VEC3(perpendicular_distanceX, htrans->getPosition().y + 1, perpendicular_distanceZ) * (distance_center_line - radius);
+	VEC3 centrePoint2 = VEC3(distance_centre_pointX, htrans->getPosition().y + 1, distance_centre_pointZ) - VEC3(perpendicular_distanceX, htrans->getPosition().y + 1, perpendicular_distanceZ) * (distance_center_line - radius);
+	//calculate each possibility with that normalPoint
+	float dis_centre1_normal = VEC3::Distance(centrePoint, wall_normal_2);
+	float dis_centre2_normal = VEC3::Distance(centrePoint2, wall_normal_2);
+
+	VEC3 myCentrePoint;
+	//the closest one will be the camera that is in front of the wall
+	if (dis_centre1_normal < dis_centre2_normal) {
+		myCentrePoint = centrePoint;
+	}
+	else {
+		myCentrePoint = centrePoint2;
+	}
+	//now we need the angle between the vectors that go shadow to centre and the normal of the wall
+	VEC3 shadow_to_centre = (myCentrePoint - wall_point) / radius; //calculate line that goes shadow to centre
+	VEC3 unit_wall_normal = wall_normal / wall_normal.Length();//get the normal in units of 1 and 0 (unitize)
+	//to get the angle between two vectors we need to do the acosen of the dot product of such vectors
+	float dotProduct = unit_wall_normal.Dot(shadow_to_centre);
+	
+	// Change the distance shadow to camera for absolute value -> dis_shadow_to_camera = distance_shadow_body * 1.3;
+	dis_shadow_to_camera = distance_shadow_body + offset_shadow_to_camera;
+	if (dis_shadow_to_camera < min_dis_shadow_to_camera) dis_shadow_to_camera = min_dis_shadow_to_camera;
+
+	float dif_in_y = htrans->getPosition().y - wall_point.y + 1;
+	//the position of the camera will now be the distance calculated multiplied by the direction of the wall normal and the position of the shadow  
+
+	newPos = debug_camPos = (unit_wall_normal * dis_shadow_to_camera) + wall_point + VEC3(0, dif_in_y, 0);
+	look = debug_look = wall_point;
+
+	VEC3 wallRight = VEC3::Up.Cross(wall_normal);
+
+	calculateMovementOffset(&newPos, &look, wallRight);
+
+	debug_cam_pos = newPos;
+	debug_cam_look = look;
+
+	
+	if (without_init) {
+		without_init = false;
+		camPos = newPos;
+		newLook = look;
+	}
+	else {
+		camPos = 0.9f * oldPos + 0.1f * newPos;
+		newLook = 0.9f * oldLook + 0.1f * look;
+	}
+
+}
+										</code></pre>
+											<hr />
+											<h3>Moving boxes</h3>
+								<p>								
+								<video class ="image left" controls>
+									<source src="images/move boxes.mp4" type="video/mp4">
+									</video>
+									Using physx, casting a ray to see if the main character in front of a pushable box, that box converts into a box controller, moving like the character does. Once it is released, it turns back into a dynamic object. </p>
+									
+									<br /><br />
+									
+											<ul class="actions special">
+												<li><button class="btn toggle" data-toggle="collapse" data-target="#push_box">See Code</button></li>
+											</ul>
+											<pre class="collapse"  id= "push_box" ><code id= "push_box">
+void TCompPlayer::hitBox(const TMsgPush& msg_push) {
+	push_box = msg_push.object;
+}
+SoundEvent* move_box_sound = nullptr;
+void TCompPlayer::convertPushBox(bool create_controller) {
+	CEntity* ent_box = push_box;
+	if (ent_box == nullptr)	return;
+
+	TCompCollider* box_col = ent_box->get<TCompCollider>();
+	if (move_box_sound) {
+		move_box_sound->stop();
+		move_box_sound = nullptr;
+	}
+	if (create_controller && !box_col->boxcontroller) {
+		box_col->destroyActor();
+		box_col->recreateController();
+	}
+	else if(!create_controller){
+	
+		box_col->destroyBoxController();
+		box_col->recreateActorBox();
+		push_box = CHandle();
+	}
+}
+
+void TCompPlayer::movePushBox(float dt) {
+	CEntity* ent_box = push_box;
+	//assert(ent_box);
+	if (ent_box == nullptr) return;
+	TCompTransform* t_box = ent_box->get<TCompTransform>();
+	VEC3 pos = t_box->getPosition();
+	TCompCollider* box_col = ent_box->get<TCompCollider>();
+	//assert(box_col->boxcontroller);
+	if (box_col->boxcontroller == nullptr) return;
+	float dif = VEC3::Distance(pos, oldPos);
+	CEngine::get().getPhysics().move(velocity, dt, box_col->boxcontroller, box_collisions);
+	oldPos = pos;
+	if (velocity.x != 0 && velocity.z != 0 && dif>0.01) {
+		TCompAudio* audio = get<TCompAudio>();
+		if (move_box_sound)
+		{
+			if (move_box_sound->isPlaying()) return;
+			move_box_sound = audio->playEvent("moveObject");
+		}
+		else {
+			move_box_sound = audio->playEvent("moveObject");
+		}
+
+	}
+	else {
+		if (!move_box_sound)return;
+		move_box_sound->stop();
+
+	}
+	
+}
+
+bool TCompPlayer::canMoveTheBox(){
+	PxRaycastBuffer hitCall;
+	PxQueryFilterData fd = PxQueryFilterData();
+	fd.data.word0 = CModulePhysicsSinn::FilterGroup::Projectable_Object;
+
+	TCompTransform* player_trans = get<TCompTransform>();
+	VEC3 player_front = player_trans->getFront(); // Deberia estar ya normalizado
+	//player_front.Normalize(); // Deberiamos poderlo quitar
+	VEC3 origin = player_trans->getPosition();
+	origin.y += 0.5;
+	
+	bool status = CEngine::get().getPhysics().gScene->raycast(
+		VEC3_TO_PXVEC3(origin), VEC3_TO_PXVEC3(player_front),
+		4, hitCall, PxHitFlags(PxHitFlag::eDEFAULT), fd);
+	if (!status) return status;
+	if (!hitCall.hasAnyHits()) {
+		if (move_box_sound) {
+			move_box_sound->stop();
+			move_box_sound = nullptr;
+		}
+			
+		return false;
+	}
+	CHandle h_collider;
+	h_collider.fromVoidPtr(hitCall.block.actor->userData);
+	TCompCollider* c_collider = h_collider;
+	const json& jconfig = c_collider->jconfig;
+
+	if (jconfig.count("controllerBox") > 0) {
+		TCompTransform* box_trans = c_collider->get<TCompTransform>();
+		VEC3 half_size = VEC3::Zero;
+		if (jconfig.count("shapes")) {
+			const json& jshapes = jconfig["shapes"];
+			for (const json& jshape : jshapes) {
+				std::string jgeometryType = jshape["shape"];
+				if (jgeometryType == "box") {
+					VEC3 aux = loadVEC3(jshape, "half_size");
+					if (aux.x + aux.y + aux.z > half_size.x + half_size.y + half_size.z)
+						half_size = aux;
+				}
+			}			
+		}
+		if ((1.4f / (half_size.y * 2)) > 1) {
+			return true;
+		}
+	}
+
+}
+											</code></pre>								
+							</section>
+
+					</div>
+
+								<!-- Footer -->
+								<footer id="footer">
+									<section class="split contact">
+										<section>
+											<h3>Email</h3>
+											<p><a href="mailto: marta@guerrerog.org">marta@guerrerog.org</a></p>
+										</section>
+										<section>
+											<h3>Social</h3>
+											<ul class="icons alt">
+												<li><a href="https://www.linkedin.com/in/marta-guerrero-pastor-890a7166/" class="icon brands fa-linkedin" target="_blank"><span class="label">Linkedin</span></a></li>
+												<li><a href="https://gitlab.com/martagp/portfolio" class="icon brands fa-gitlab" target="_blank"><span class="label">GitLab</span></a></li>
+											</ul>
+										</section>
+									</section>
+								</footer>
+			
+							<!-- Copyright -->
+								<div id="copyright">
+									<ul><li>&copy; Marta Guerrero Pastor Portfolio</li><li>Design: <a href="https://html5up.net">Made with HTML5 UP</a></li></ul>
+								</div>
+			
+
+			</div>
+
+		<!-- Scripts -->
+		<script>
+			$(document).ready(function(){
+			  $(".toggle").click(function(){
+				$(".collapse").collapse('toggle');
+			  });
+			});
+			</script>
+			<script src="assets/js/jquery.min.js"></script>
+			<script src="assets/js/jquery.scrollex.min.js"></script>
+			<script src="assets/js/jquery.scrolly.min.js"></script>
+			<script src="assets/js/browser.min.js"></script>
+			<script src="assets/js/breakpoints.min.js"></script>
+			<script src="assets/js/util.js"></script>
+			<script src="assets/js/main.js"></script>
+
+	</body>
+</html>

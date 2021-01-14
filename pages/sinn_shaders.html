@@ -1,0 +1,458 @@
+<!DOCTYPE HTML>
+<!--
+	Massively by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html>
+	<head>
+		<title>SINN - Shaders - Portfolio</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="../assets/css/main.css" />
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+		<noscript><link rel="stylesheet" href="../assets/css/noscript.css" /></noscript>
+	</head>
+	<body class="is-preload">
+
+		<!-- Wrapper -->
+			<div id="wrapper">
+
+
+				<!-- Header -->
+				<header id="header">
+					<a href="../index.html" class="logo">Portfolio</a>
+				</header>
+
+			<!-- Nav -->
+				<nav id="nav">
+					<ul class="links">
+						<li class="active"><a href="../index.html">SINN</a></li>
+					</ul>
+					<ul class="icons">
+						<li><a href="https://www.linkedin.com/in/marta-guerrero-pastor-890a7166/" class="icon brands fa-linkedin" target="_blank"><span class="label">Linkedin</span></a></li>
+						<li><a href="https://gitlab.com/martagp/portfolio" class="icon brands fa-gitlab" target="_blank"><span class="label">GitLab</span></a></li>
+					</ul>
+				</nav>
+
+				<!-- Main -->
+					<div id="main">
+
+						<!-- Post -->
+							<section class="post">
+								<header class="major">
+									<h1>Shaders</h1>
+								</header>
+								<h3>Fire</h3>
+									<p>								
+									<video class ="image left" controls>
+										<source src="images/fire.mp4" type="video/mp4">
+									  </video>
+										A simple toon flame made by mixing two ShaderToy shaders (<a href="https://www.shadertoy.com/view/wdtGWn" target="_blank">RVA Game Jams Magic Flame Demo by samlo</a>
+										and <a href="https://www.shadertoy.com/view/MtVGWV" target="_blank">Toon Fire by floatvoid)</a>, and adapting it to fit better into the art of the game, 
+										changing also when the environment changes. The game changes when the user "projects", meaning that the control is now resembling 2D, stripping every colour but the blues. </p>
+										<br />
+										
+										
+								
+										<ul class="actions special">
+											<li><button class="btn toggle" data-toggle="collapse" data-target="#fire_code">See Code</button></li>
+										</ul>
+										<pre class="collapse"  id= "fire_code" ><code id= "fire_code">#include "common.h"
+#include "pbr_functions.inc"
+#include "pbr_gbuffer.inc"
+#include "noise_functions.inc"
+
+// FLAME MASK SHAPING
+#define FLAME_SIZE 2.2
+#define FLAME_WIDTH 1.3
+#define DISPLACEMENT_STRENGTH 0.3
+#define DISPLACEMENT_FREQUENCY 5.0
+#define DISPLACEMENT_EXPONENT 1.5
+#define DISPLACEMENT_SPEED 5.0
+#define TEAR_EXPONENT 0.7
+#define BASE_SHARPNESS 4.0
+
+// NOISE
+#define NOISE_SCALE 3.0
+#define NOISE_SPEED -4.7
+#define NOISE_GAIN 0.5
+#define NOISE_MULT 0.35
+
+// FLAME BLENDING
+#define FALLOFF_MIN 0.2
+#define FALLOFF_MAX 1.3
+#define FALLOFF_EXPONENT 0.9
+
+// COLOR
+#define BACKGROUND_MIN 0.0
+#define BACKGROUND_MAX 0.15
+#define RIM_EXPONENT 2.0
+
+
+// Information passed from VS gbuffer of a normal mesh to the PS
+struct VOUT
+{
+	float4 Pos : SV_POSITION;
+	float2 Uv : TEXCOORD0;
+	float3 WorldPos : TEXCOORD2;
+	float3 WorldNormal : TEXCOORD3;
+	float4 WorldTan : TEXCOORD4;
+	float3 V : POSITION;
+};
+
+//----------------------------------------------------------
+VOUT VS(VtxPosNUvT input)
+{
+	float4x4 world = ObjWorld;
+
+	VOUT output = (VOUT)0;
+
+	float3 origin = world[3].xyz;
+	float3 V = normalize(origin - CameraPos.xyz);
+	float3 right = CameraLeft;   //normalize(cross(V, float3(0,1,0)));
+	float3 up = float3(0, 1, 0);//normalize(cross(right, V));
+
+	//float3 p = float3(origin.x, input.Uv.y, origin.z)*GlobalWorldTime;right *= 1+sin(noise(p));    
+	output.Pos = float4(origin, 1);
+	output.Pos.xyz += (input.Uv.x - .5) * right + input.Uv.y * up;
+	output.Pos = mul(output.Pos, CameraViewProjection);
+	output.WorldNormal = mul(input.N, (float3x3)world);
+
+	output.Uv = input.Uv;
+
+	return output;
+}
+
+
+float4 PS(VOUT input) : SV_Target
+{
+	float2 uv = input.Uv;
+	float3    BACKGROUND_COLOR_MIN = float3(1, 0.0, 0.);
+	float3   BACKGROUND_COLOR_MAX = float3(1.0, 0.3, 0.0);
+	float3   RIM_COLOR = float3(1.0, 0.9, 0.0);
+
+	if (projected) {
+
+		BACKGROUND_COLOR_MIN = float3(0.2,0.6,0.8);
+		BACKGROUND_COLOR_MAX = float3(0.3, 0.9, 0.8);
+		RIM_COLOR = float3(0.35, 1,1);
+
+	}
+	// shape our base flame mask.
+	// first we squish a circle and displace it, then we turn it into a teardrop shape
+	float2 p = (uv - .5);
+			p *= FLAME_SIZE;
+			p.x *= FLAME_WIDTH;
+	float time = sin(noise(ObjWorld[3].xyz)) * .5 + .5 + GlobalWorldTime;
+	float dis_speed = DISPLACEMENT_SPEED * (sin(noise(ObjWorld[3].xyz)) * .5 + .5);
+	float  flameDisplacement = max(0.0, sin(time * DISPLACEMENT_SPEED + (p.y * dis_speed)) * DISPLACEMENT_STRENGTH * pow(abs(uv.y - 0.1), DISPLACEMENT_EXPONENT));
+	p.x += flameDisplacement;
+	p.x += p.x / pow(abs(1.0 - p.y), TEAR_EXPONENT); // teardrop shaping
+
+	// next we create our base flame mask, it looks a bit like a spooky ghost
+	float gradient = length(p);
+	float base = 1.0 - pow(gradient, BASE_SHARPNESS);
+
+	// next we create our noise mask, which we will use to create the flickering part of the flame
+	float speed = (sin(noise(ObjWorld[3].xyz)) * .5 + .5) * NOISE_SPEED * time;
+	float up0 = snoise((uv * NOISE_SCALE) + float2(0.0, speed)) * NOISE_MULT + NOISE_GAIN;
+	float up1 = 0.5 + snoise((uv * NOISE_SCALE) + float2(0.0,speed)) * NOISE_MULT + NOISE_GAIN;
+
+	// define a gradient that we can use to make the flame fall off at the top and apply it to BOTH the flame mask and the noise together
+	float falloff = smoothstep(FALLOFF_MIN, FALLOFF_MAX, pow(abs(uv.y), FALLOFF_EXPONENT));
+	float flame = (base * up0 * up1);
+			flame = clamp(flame - falloff, -0.0, 1.0); // we have a flame!
+
+
+	float background = smoothstep(BACKGROUND_MIN, BACKGROUND_MAX, flame);
+	float3 color = lerp(BACKGROUND_COLOR_MIN, BACKGROUND_COLOR_MAX, uv.y) * background;
+	float s1 = step(0.24,flame);
+	float s2 = step(0.7,flame);
+	float3 dark = lerp(float3(0.0,0.0,0.0), float3(1.0, 0.4, 0.0),  s1);
+	float3 light = lerp(dark, float3(1.0, 0.8, 0.0),  s2);
+
+	if (projected) {
+		dark = lerp(float3(0.0,0,0),float3(0.6,0.7,0.7),s1);
+		light = lerp(dark, float3(1,1,1),s2);
+			color = lerp(color, RIM_COLOR, light);
+		float4 lastColor = float4(color * color * color,color.x * 6);
+		if (lastColor.w < 0.1)discard;
+		return lastColor;
+	}
+
+	color = lerp(color, RIM_COLOR, light);
+	float4 lastColor = float4(color,color.x);
+	if (lastColor.w < 0.1)discard;
+	return lastColor;
+}
+											
+											</code></pre>
+											<hr />
+											<h3>Water</h3>
+								<p>								
+								<video class ="image right" controls>
+									<source src="images/water.mp4" type="video/mp4">
+									</video>
+									A toon water shader made with fbmGrad noise and smoothstep (for the wave colour). It also has "collision" detection, using depth comparison with the help of this <a href="http://fire-face.com/personal/water/" >tutorial</a>. </p>
+									
+									<br /><br />
+									
+											<ul class="actions special">
+												<li><button class="btn toggle" data-toggle="collapse" data-target="#water_code">See Code</button></li>
+											</ul>
+											<pre class="collapse"  id= "water_code" ><code id= "water_code">	
+#include "common.h"
+#include "pbr_functions.inc"
+#include "pbr_gbuffer.inc"
+#include "noise_functions.inc"
+
+//--------------------------------------------------------------------------------------
+float3 computeSpecular( float3 wPos, float3 N, float3 view_dir, float roughness, float3 specular_color ) {
+  // From wPos to Light
+  float3 light_dir_full = LightPos.xyz - wPos;
+  float  distance_to_light = length( light_dir_full );
+  float3 light_dir = light_dir_full / distance_to_light;
+
+  float  NdL = saturate(dot(N, light_dir));
+  float  NdV = saturate(dot(N, view_dir));
+  float3 h   = normalize(light_dir + view_dir); // half vector
+
+  float  NdH = saturate(dot(N, h));
+  float  VdH = saturate(dot(view_dir, h));
+  float  LdV = saturate(dot(light_dir, view_dir));
+
+  // max is to avoid reach zero
+  float  a   = max(0.001f, roughness * roughness);
+  float3 cSpec = Specular(specular_color, h, view_dir, light_dir, a, NdL, NdV, NdH, VdH, LdV);
+  return cSpec;
+}
+
+// https://www.shadertoy.com/view/4dS3Wd
+float fbmF2(float2 x) {
+  float t = GlobalWorldTime * 0.2;
+  float v = 0.0;
+  float a = 0.5;
+  float2 shift = float2(100, 100);
+  // Rotate to reduce axial bias
+  float2x2 rot = float2x2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+  for (int i = 0; i < 4; ++i) {
+    v += a * snoise(x);
+    x = mul(rot, x) * 0.99 + shift;
+    a *= 0.5;
+
+    // Advance with time
+    x += t * i;
+  }
+  return v;
+}
+
+float fbmF3(float3 x) {
+  float t = GlobalWorldTime * 0.2;
+  float v = 0.0;
+  float a = 0.5;
+  float3 shift = float3(100, 100, 100);
+  for (int i = 0; i < 3; ++i) {
+    v += a * noise(x);
+    x = x * 0.9 + shift;
+    a *= 0.2;
+    x += t * i;
+  }
+  return v;
+}
+
+
+float3 fbmGradF2( float2 uv ) {
+  float small = 0.01;
+  float f0 = fbmF2(uv);
+  // df/dx = (f(x + dx)-f(x))/dx = (f1 - f0)/dx
+  float2 f1 = float2(
+      fbmF2(uv + float2(small, 0.)), 
+      fbmF2(uv + float2(0., small)));
+  float2 df = -( f1 - f0 ) / small;
+  // 9 to enforce the vector almost goes in Z direction
+  return normalize(float3(df.x, df.y, 9));
+}
+
+float3 fbmGradF3( float3 uv ) {
+  float small = 0.01;
+  float f0 = fbmF3(uv);
+  // df/dx = (f(x + dx)-f(x))/dx = (f1 - f0)/dx
+  float3 f1 = float3(
+      fbmF3(uv + float3(small, 0., 0.)), 
+      fbmF3(uv + float3(0., small, 0.)),
+      fbmF3(uv + float3(0., 0., small))
+      );
+  float3 df = -( f1 - f0 ) / small;
+  // Add a bias to z component
+  return normalize(float3(df.x, df.y, 0.2 + df.z));
+}
+
+float4 PS( V2F_GBuffer input) : SV_Target
+{
+  // 2D noise gradient
+  float2 coords = input.WorldPos.xz + input.WorldPos.yy;
+  float3 normal_tbn = fbmGradF2( 1.2*(coords * 0.14) );
+  int3 ss = uint3(input.Pos.xy, 0);
+
+
+  float3 N = getNormalFromTangentSpace( input, normal_tbn );
+
+  float3 wPos = input.WorldPos + N * 0.5;
+  
+  float3 V = normalize(CameraPos.xyz - input.WorldPos);
+  float spec = computeSpecular( wPos, N, V, 0.25, 1 ).x;
+  spec *= getShadowFactor( input.WorldPos );
+
+  // Convert from worldSpace to homo screenSpace
+  float4 proj_coords = mul( float4(input.WorldPos,1), CameraViewProjection );
+  float2 homo_coords = proj_coords.xy/ proj_coords.w;
+ 
+  // Convert -1..1 to 0..1
+
+  homo_coords=homo_coords*.5+.5;
+  homo_coords.y=1-homo_coords.y;
+  // Recover the color in the new position
+  
+  float3 color = float3(0.0,0.025,0.025);
+  float3 color2= float3(0.0,0.025,0.025)*3;
+  float3 color3= float3(0.2,0.2,0.2);
+  // Darkerize the tangent surfaces
+  float fresnel = saturate( dot( V, input.WorldNormal ) );
+  
+  
+  float3 color_final = color + spec * LightColor;
+  float waternoise;
+  float l = waternoise = dot(normalize(normal_tbn)*.5+.5,float3(0, 1, 0));
+
+  l = smoothstep(0.5,0.49,l+0.01)*smoothstep(0.49,0.5,l+0.01);
+  //l*= snoise(float2(l,l));
+
+  //return float4(waternoise,waternoise,waternoise,1);
+
+
+  color = lerp( color*0.02 , color2, l );
+  color=pow(abs(color),1./1.9);
+ 
+  float3 light= txAccLight.Sample(samLinearClamp, homo_coords.xy).xyz;
+  float3 depth = txGLinearDepth.Sample(samLinear, homo_coords.xy).xyz;
+  float  zlinear = txGLinearDepth.Load(ss).x;
+  depth.x=smoothstep(.0,.3,depth.x); 
+  float3 cam2worldPos = input.WorldPos - CameraPos;
+  float  camera_z = dot( CameraFront, cam2worldPos ) / CameraZFar;
+  float depthDifference = zlinear-camera_z;
+  
+  float edgePatternScale=8;
+  float edgePatternScroll=5;
+  
+  
+  float offset = 0.2;
+   float time= sin(noise(ObjWorld[3].xyz))*.5+.5+GlobalWorldTime;
+ 
+   float2 scaleUV= input.WorldPos.xz;
+  float a = txNoise.Sample(samLinear,scaleUV-float2(edgePatternScroll,cos(scaleUV.x))).x;
+  float b = txNoise.Sample(samLinear,scaleUV*0.5+float2(sin(scaleUV.y),edgePatternScroll)).y;
+ 	float uvy = scaleUV.y - (sin(time) * 0.5 + 0.5) * 0.1 - 0.6;
+  //float a = txNoise.Sample(samLinear,scaleUV).x;
+  //float b = txNoise.Sample(samLinear,scaleUV).y;
+  float bubbleSpeed = 0.8;
+  float bubbleWidth = .15;
+  float bubbleHeight = .15;
+  float alpha=1;
+  //float mask =(a+b)*0.9;
+  //float mask = snoise(float2(a*3,uvy*4+time*0.5)) * 0.3 + 0.5;
+
+  float wavenoise =  snoise(input.Pos.xyz * .0005 + float3(0,0,(time*.100)))*.5+.5;
+        wavenoise *= snoise(input.Pos.xyz * .001  + float3(0,0,(time*.015)))*.5+.5;
+        wavenoise = 1 - smoothstep(0.15,0.3, wavenoise);
+
+  float3 A = fbmGradF2( coords * 0.6 );
+  float  B = dot(normalize(A)*.5+.5,float3(0, 1.375, 0));
+  float  C = noise(float3(abs(scaleUV.x-0.5) * bubbleWidth, uvy * bubbleHeight * bubbleSpeed, time));
+  
+  
+ 
+  float mask = noise(float3(abs(scaleUV.x-0.5) * bubbleWidth, uvy * bubbleHeight * bubbleSpeed, time)) * waternoise + 0.5;
+
+  float lead = 1.;
+  float leadEdge=.125;
+  float falloffDistance = .125;
+  if(depthDifference < falloffDistance*leadEdge) {
+    lead = depthDifference/(falloffDistance*leadEdge);
+    lead = smoothstep(.0 + wavenoise*.4, 1.,lead);
+
+    alpha*=lead*0.5;
+    mask*=lead;
+  } 
+
+  //wavenoise = smoothstep(.2 + wavenoise*.1, 1.,lead);
+
+  float fallof=1.0-(depthDifference/falloffDistance)+offset;
+  color3=lerp(color3,color,0.5);
+  float3 edge= color3*fallof;
+
+  float foam =  smoothstep(0.45 + (lead*.5), .455 + (lead*.5), lerp(B,C,.01)) + fallof * .25;
+  //float foam =  smoothstep(0.45 + (lead*.5), .455 + (lead*.5), lerp(B,C,.01) + lead*0.025) + fallof * .25;
+        //foam *= smoothstep(0.45 + (lead*.5), .71, lerp(B,C,.01));
+
+  //float foam = smoothstep(0.45 + lead*0.9 ,0.451 + lead*0.9,lerp(B,C,.01));
+  //float v = maxn(0.01,foam);//smoothstep(0.5 + falloffDistance*leadEdge,0.51,lerp(B,C,.01));
+  //return float4(v,v,v,1);
+
+  //color=lerp(light*.1,color,depth.x+.2);
+  //color+=clamp(float3(foam,foam,foam),0.0,1.0);
+
+  color = lerp(color, float3(.005,.025,.0175)*5, foam + edge * lead);
+
+  return float4(color,alpha);
+}
+
+											</code></pre>								
+							</section>
+
+					</div>
+
+								<!-- Footer -->
+								<footer id="footer">
+									<section class="split contact">
+										<section>
+											<h3>Email</h3>
+											<p><a href="mailto: marta@guerrerog.org">marta@guerrerog.org</a></p>
+										</section>
+										<section>
+											<h3>Social</h3>
+											<ul class="icons alt">
+												<li><a href="https://www.linkedin.com/in/marta-guerrero-pastor-890a7166/" class="icon brands fa-linkedin" target="_blank"><span class="label">Linkedin</span></a></li>
+												<li><a href="https://gitlab.com/martagp/portfolio" class="icon brands fa-gitlab" target="_blank"><span class="label">GitLab</span></a></li>
+											</ul>
+										</section>
+									</section>
+								</footer>
+			
+							<!-- Copyright -->
+								<div id="copyright">
+									<ul><li>&copy; Marta Guerrero Pastor Portfolio</li><li>Design: <a href="https://html5up.net">Made with HTML5 UP</a></li></ul>
+								</div>
+			
+
+			</div>
+
+		<!-- Scripts -->
+		<script>
+			$(document).ready(function(){
+			  $(".toggle").click(function(){
+				$(".collapse").collapse('toggle');
+			  });
+			});
+			</script>
+			<script src="assets/js/jquery.min.js"></script>
+			<script src="assets/js/jquery.scrollex.min.js"></script>
+			<script src="assets/js/jquery.scrolly.min.js"></script>
+			<script src="assets/js/browser.min.js"></script>
+			<script src="assets/js/breakpoints.min.js"></script>
+			<script src="assets/js/util.js"></script>
+			<script src="assets/js/main.js"></script>
+
+	</body>
+</html>

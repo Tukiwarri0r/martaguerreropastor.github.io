@@ -1,0 +1,887 @@
+<!DOCTYPE HTML>
+<!--
+	Massively by HTML5 UP
+	html5up.net | @ajlkn
+	Free for personal and commercial use under the CCA 3.0 license (html5up.net/license)
+-->
+<html>
+	<head>
+		<title>SINN - Extras - Portfolio</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="../assets/css/main.css" />
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+		<noscript><link rel="stylesheet" href="../assets/css/noscript.css" /></noscript>
+	</head>
+	<body class="is-preload">
+
+		<!-- Wrapper -->
+			<div id="wrapper">
+
+
+				<!-- Header -->
+				<header id="header">
+					<a href="../index.html" class="logo">Portfolio</a>
+				</header>
+
+			<!-- Nav -->
+				<nav id="nav">
+					<ul class="links">
+						<li class="active"><a href="../index.html">SINN</a></li>
+					</ul>
+					<ul class="icons">
+						<li><a href="https://www.linkedin.com/in/marta-guerrero-pastor-890a7166/" class="icon brands fa-linkedin" target="_blank"><span class="label">Linkedin</span></a></li>
+						<li><a href="https://gitlab.com/martagp/portfolio" class="icon brands fa-gitlab" target="_blank"><span class="label">GitLab</span></a></li>
+					</ul>
+				</nav>
+
+				<!-- Main -->
+					<div id="main">
+
+						<!-- Post -->
+							<section class="post">
+								<header class="major">
+									<h1>Extras</h1>
+								</header>
+								<h3>Sound</h3>
+									<p>								
+										<span class="image left"><img src="images/fmod.png" alt="" /></span>
+										I solely integrated all the music and sound effects into the project. This included using fmod studio and adding all the libraries needed. Here's a couple of snippets of the Sound module (manager) code and 
+										the main character's step sound effects. </p>
+										<br />
+										
+										
+								
+										<ul class="actions special">
+											<li><button class="btn toggle" data-toggle="collapse" data-target="#sound_man">Sound Module</button></li>
+										</ul>
+										<pre class="collapse"  id= "sound_man" ><code id= "sound_man">
+void CModuleSound::start()
+{
+	result = Studio::System::create(&system);
+
+	result = system->initialize(1024, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, extraDriverData);
+	// Deshabilitamos el log de FMOD
+	FMOD::Debug_Initialize(FMOD_DEBUG_LEVEL_NONE);
+
+	// Deshabilitamos el log de FMOD
+	FMOD::Debug_Initialize(FMOD_DEBUG_LEVEL_NONE);
+
+	// arranco los Bancos Basicos
+	result = system->loadBankFile("../Bin/data/sounds/banks/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &masterBank);
+	result = system->loadBankFile("../Bin/data/sounds/banks/Master.strings.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &stringsBank);
+
+	// un par de bancos de ejemplo    
+	result = system->loadBankFile("../Bin/data/sounds/banks/sinnBank.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &sinnBank);
+
+	myBanks.emplace("Master", masterBank);
+	myBanks.emplace("MasterString", stringsBank);
+	myBanks.emplace("SINN", sinnBank);
+
+	//recorro todos los banco y cargo los eventos
+	for (auto& b : myBanks) {
+		Studio::Bank* banquito = b.second;
+		loadEvents(banquito);
+	}
+		
+}
+void CModuleSound::update(float elapsed)
+{
+	
+	if (CApplication::get().getInPause()) {
+		if (!pause_music) {
+			pauseAllEvents();
+			SoundEvent* pause =playEvent("menu");
+			if(getBSO())prevbso = getBSO()->getName();
+			pause->setVolume(pause->getVolume() * current_bso_volume);
+			pause_music = true;
+		}
+
+	}
+	else {
+			forceStopEvent("menu");
+			unPauseAllEvents();
+			prevbso = "";
+			pause_music = false;
+	}
+	 /* Set listener according to active camera */
+	CHandle candidate_h_listener = getEntityByName("Player");
+	if (candidate_h_listener.isValid()) {
+		setListener(candidate_h_listener);
+	}
+
+	/* Look for finished event instances */
+	std::vector<unsigned int> done;
+	for (auto& iter : myEventInstances) {
+		FMOD::Studio::EventInstance* e = iter.second;
+		FMOD_STUDIO_PLAYBACK_STATE state;
+		e->getPlaybackState(&state);
+		if (state == FMOD_STUDIO_PLAYBACK_STOPPED) {
+			e->release();
+			done.emplace_back(iter.first);
+		}
+	}
+
+	for (auto id : done) {
+		myEventInstances.erase(id);
+	}
+	if(effectsVolume != current_effects_volume)	
+		updateVolumeToEffects();
+	if (BSOVolume != current_bso_volume)
+		updateVolumeToBSO();
+	current_effects_volume = effectsVolume;
+	current_bso_volume = BSOVolume;
+	//esto siempre tiene que hacerlo
+	system->update();
+}
+SoundEvent* CModuleSound::playEvent(const std::string& name)
+{
+	
+	std::string eventpath = "event:/" + name;
+	unsigned int retID = 0;
+	auto iter = myEvents.find(eventpath);
+	SoundEvent* soundEvent;
+	if (name == "") {
+		soundEvent =new SoundEvent();
+		return soundEvent;
+	}
+	if (iter != myEvents.end()) {
+
+		/* Create instance of an event */
+		FMOD::Studio::EventInstance* event = nullptr;
+		iter->second->createInstance(&event);
+		if (event) {
+
+			/* Start the event instance */
+			event->start();
+
+			/* Get the next id and add it to map */
+			eventID++;
+			retID = eventID;
+			myEventInstances.emplace(retID, event);
+		}
+
+		soundEvent = new SoundEvent(retID);
+		soundEvent->setName(name);
+		event->setUserData(&soundEvent);
+		if (current_bso) {
+			if (name.compare("menu") != 0 || current_bso->getName().compare(name) != 0) {
+				soundEvent->setVolume(current_effects_volume);
+			}
+		}
+		else {
+			if (name.compare("menu") != 0) {
+				soundEvent->setVolume(current_effects_volume);
+			}
+		}
+		
+	}
+	else {
+		soundEvent = new SoundEvent(retID);
+	}
+	return soundEvent;
+}
+
+	
+										</code></pre>
+
+										<ul class="actions special">
+											<li><button class="btn toggle" data-toggle="collapse" data-target="#step">Step sound effect</button></li>
+										</ul>
+										<pre class="collapse"  id= "step" ><code id= "step">											
+void TCompPlayer::playSteps()
+{
+	if (!stepsActivated) return;
+
+
+	/*if (VEC3::Distance(t_player->getPosition(), playerStepPos) > stepDistance) {
+		playerStepPos = t_player->getPosition();
+		TCompAudio* audio = get<TCompAudio>();
+		audio->playEvent("Test1/OnStep");
+	
+	}*/
+
+	if (collisions.collision_down) {
+		TCompTransform* t_player = get<TCompTransform>();
+		TCompSkeleton* skel = get<TCompSkeleton>();
+		
+		// Si acabamos de empezar andar y aun no hemos pisado con ninguno de los dos pies
+		if (!leftFootInFloor && !rightFootInFloor) {
+			if (skel->hasRightFootInFloor(t_player->getPosition().y, stepDistanceRight)) {
+				TCompAudio* audio = get<TCompAudio>();
+				//dbg("pie derecho Idle\n");
+				steps_event = audio->playEvent("Test1/OnStep");
+				if (plant.isValid()) {
+					TMsgStepPlant msg;
+					CEntity* e = plant;
+					e->sendMsg(msg);
+				}
+				rightFootInFloor = true;
+			}
+			else if (skel->hasLeftFootInFloor(t_player->getPosition().y, stepDistanceLeft)) {
+				TCompAudio* audio = get<TCompAudio>();
+				//dbg("pie izquierdo Idle\n");
+				steps_event = audio->playEvent("Test1/OnStep");
+				if (plant.isValid()) {
+					TMsgStepPlant msg;
+					CEntity* e = plant;
+					e->sendMsg(msg);
+				}
+				leftFootInFloor = true;
+			}
+		// Si ya hemos pisado con el pie derecho pero aun no con el izquierdo
+		}
+		else if (!leftFootInFloor && rightFootInFloor) {
+			if (skel->hasLeftFootInFloor(t_player->getPosition().y, stepDistanceLeft)) {
+				TCompAudio* audio = get<TCompAudio>();
+				//dbg("pie izquierdo \n");
+				steps_event = audio->playEvent("Test1/OnStep");
+				if (plant.isValid()) {
+					TMsgStepPlant msg;
+					CEntity* e = plant;
+					e->sendMsg(msg);
+				}
+				leftFootInFloor = true;
+				rightFootInFloor = false;
+			}
+		}
+		// Si ya hemos pisado con el pie izquierdo pero aun no con el derecho
+		else if (leftFootInFloor && !rightFootInFloor) {
+			if (skel->hasRightFootInFloor(t_player->getPosition().y, stepDistanceRight)) {
+				TCompAudio* audio = get<TCompAudio>();
+				//dbg("pie derecho \n");
+				steps_event = audio->playEvent("Test1/OnStep");
+				if (plant.isValid()) {
+					TMsgStepPlant msg;
+					CEntity* e = plant;
+					e->sendMsg(msg);
+				}
+				rightFootInFloor = true;
+				leftFootInFloor = false;
+			}
+		}
+	}
+
+}
+										</code></pre>
+											<hr />
+											<h3>Particles</h3>
+								<p>								
+								<video class ="image right" controls>
+									<source src="images/particles.mp4" type="video/mp4">
+									</video>
+									Computed particles, with a coded system and generator. Here's a snippet of the particle system and an example of a smoke particle (the one in the video, when the column impacts on the floor).
+									<br /><br />
+									<ul class="actions special">
+										<li><button class="btn toggle" data-toggle="collapse" data-target="#particle">Particle system code</button></li>
+									</ul></p>
+									<pre class="collapse"  id= "particle" ><code id= "particle">
+										
+  CSystem::CSystem()
+  {
+    _combinativeTechnique = Resources.get("particles.tech")->as<CTechnique>();
+    _additiveTechnique = Resources.get("particles_additive.tech")->as<CTechnique>();
+    _quadMesh = Resources.get("quad_xy.mesh")->as<CMesh>();
+  }
+
+  void CSystem::start(float warmUpTime)
+  {
+    if (!_active)
+    {
+      _active = true;
+      interval = _emitter->interval;
+      numParticles = _emitter->numParticles;
+      emit();
+      
+      if (warmUpTime > 0.f)
+      {
+        constexpr float kStep = 1.f / 60.f;
+        while (warmUpTime > 0.f)
+        {
+          const float stepTime = std::min(kStep, warmUpTime);
+          update(stepTime);
+          warmUpTime -= stepTime;
+        }
+      }
+    }
+  }
+  void CSystem::fadeOut(float duration)
+  {
+    _fadeDuration = duration;//multiplico por dos si no empieza el fade demasiado pronto (falta ver why)
+    _fadeTime = 0.f;
+  }
+
+  void CSystem::updateFading(float delta) {
+
+    if (_fadeDuration != 0.f)
+    {
+      _fadeTime += delta;
+      _fadeRatio = (1.f - (_fadeTime / _fadeDuration));
+    }
+    else {
+      _fadeRatio = 1.0f;
+    }
+  }
+  void CSystem::emit()
+  {
+    // remove old particles
+    while (_particles.size() + numParticles > _emitter->maxParticles)
+    {
+        if (_particles.size() > 0) _particles.pop_front();
+        else break;
+    }
+
+    const MAT44& ownerTransform = getOwnerTransform().asMatrix();
+    
+    for (int i = 0; i < numParticles; ++i)
+    {
+      TParticle p = generate();
+
+      if (!_emitter->followOwner)
+      {
+        p.position = VEC3::Transform(p.position, ownerTransform);
+      }
+
+      _particles.push_back(std::move(p));
+    }
+
+    _time = 0.f;
+  }
+  float RandomFloat(float max, float min) {
+    
+    float random = ((float)rand()) / (float)RAND_MAX;
+
+    // generate (in your case) a float between 0 and (4.5-.78)
+    // then add .78, giving you a float between .78 and 4.5
+    float range = max - min;
+    return (random * range) + min;
+  }
+
+  void CSystem::update(float elapsed)
+  {
+    if (!_active)
+    {
+      return;
+    }
+    updateFading(elapsed);
+    VEC3 gravity;
+    MAT44 world = MAT44::Identity;
+    MAT44 world_rot = MAT44::Identity;
+    TCompSkeleton* skeleton = nullptr;
+    if (_emitter->followOwner) {
+      CEntity* e = _owner;
+      TCompTransform* e_transform = e->get<TCompTransform>();
+      world = e_transform->asMatrix();
+      
+      VEC3 proj_vector = e_transform->getFront();
+      world_rot = MAT44::CreateFromQuaternion(e_transform->getRotation());
+      
+    }
+    gravity= VEC3(0.f, -9.8f, 0.f);
+  
+    for (auto& p : _particles)
+    {
+      p.time += elapsed;
+
+      if(_emitter->lifetime != 0.f && p.time >= p.duration) continue;
+
+      const float lifetimeRatio = p.duration != 0.f ? std::clamp(p.time / p.duration, 0.f, 1.f) : 0.f;
+
+      p.velocity += gravity * _emitter->gravityFactor * elapsed;
+      if (_emitter->followOwner)p.velocity += VEC3::Transform(_emitter->tvelocity.get(lifetimeRatio), world_rot)*elapsed;
+      
+      p.position += p.velocity * elapsed;
+      
+      p.color = _emitter->colors.get(lifetimeRatio)*_fadeRatio;
+      p.size = _emitter->sizes.get(lifetimeRatio);
+
+     if (_emitter->noise_strength > 0)//some particles will have a noise to them so they're more "natural"
+      {
+        p.random_direction = VEC3(p.random_direction.x + (2.0f * ((float)rand() / (float)RAND_MAX) - 1.0f), p.random_direction.y + (2.0f * ((float)rand() / (float)RAND_MAX) - 1.0f), p.random_direction.z + (2.0f * ((float)rand() / (float)RAND_MAX) - 1.0f));
+        p.velocity += p.random_direction * _emitter->noise_strength * elapsed;
+      }
+    }
+
+    // remove dead particles
+    auto eraseIt = std::remove_if(_particles.begin(), _particles.end(), [](TParticle& p){ return p.duration != 0.f && p.time >= p.duration; });
+    _particles.erase(eraseIt, _particles.end());
+
+    // shall we emit again?
+    _time += elapsed;
+    if (interval > 0.f && _time >= interval)
+    {
+      if (_emitter->maxInterval > 0.0f)//check if the interval we want is constant or in a range
+      {
+        interval = RandomFloat(_emitter->maxInterval, _emitter->minInterval);
+      }
+      if (_emitter->randomParticles)//check if the num
+      {
+        numParticles = rand() % _emitter->numRandMaxParticles + _emitter->numParticles;
+      }
+      else {
+        numParticles = _emitter->numParticles;
+      }
+      emit();
+    }
+  }
+
+  void CSystem::render()
+  {
+    if (!_active)
+    {
+      return;
+    }
+    const CTechnique* tech = _emitter->additive ? _additiveTechnique : _combinativeTechnique;
+    tech->activate();
+
+    _emitter->texture->activate(TS_ALBEDO);
+
+    CEntity* eCamera = CEngine::get().getRender().getCamera();
+    if(!eCamera) return;
+
+    TCompTransform* cCameraTransform = eCamera->get<TCompTransform>();
+    if (!cCameraTransform) return;
+
+    const VEC3 cameraPosition = cCameraTransform->getPosition();
+    const VEC3 cameraUp = cCameraTransform->getUp();
+
+    const MAT44& ownerTransform = getOwnerTransform().asMatrix();
+
+    for (auto& p : _particles)
+    {
+       VEC3 position = _emitter->followOwner ? VEC3::Transform(p.position, ownerTransform) : p.position;
+      if (_emitter->followAnimation) {
+        CEntity* e = _owner;
+        TCompSkeleton* skeleton =e-> get<TCompSkeleton>();
+        string name = e->getName();
+        QUAT rot = skeleton->getAbsRotationBone(1);
+        MAT44 sk = MAT44::CreateScale(1)
+          * MAT44::CreateFromQuaternion(rot)
+          * MAT44::CreateTranslation(skeleton->getAbsTraslationBone(1));
+        position = VEC3::Transform(p.position, sk);
+      }
+      const MAT44 sc = MAT44::CreateScale(p.size);
+
+      const MAT44 bb = MAT44::CreateBillboard(position, cameraPosition, cameraUp);
+      const MAT44 world = sc * bb ;
+
+      setObjRenderCtes(world, p.color);
+
+      _quadMesh->activateAndRender();
+    }
+  }
+
+									</code></pre>	
+									<ul class="actions special">
+										<li><button class="btn toggle" data-toggle="collapse" data-target="#smoke">Smoke particle code</button></li>
+									</ul>
+									<pre class="collapse"  id= "smoke" ><code id= "smoke">
+{
+	"texture" : "data/textures/particles/Dust_Smoke_new.dds",
+
+	"additive" : false,
+	"color" : "0.44 0.46 0.5 0.4",
+	"xcolor" : "0.29 0.24 0.21 1",
+	
+	"position" : "0 0.2 0",
+	"xposition" : "0 7.5 0.2",
+	"type" : "cube",
+	"volume" : "1 0.3 1",
+
+	
+	"interval" :0,
+	"num_particles" : 26,
+	"max_particles" :26,
+	"fade_time":5,
+	"onlyOnce":true,
+	"velocity" : "0 0 0",
+	"velocity_variation" : "0 0 0",
+	"gravity_factor" : 0,
+	"follow" : false,
+
+
+	"lifetime" : 5,
+	"lifetime_variation" : 0,
+
+	"sizes" : [
+		[1, 1.5],
+		[1.3, 1.8],
+		[2, 2.5 ]
+	]
+}
+										
+									</code></pre>	
+									
+									<hr />
+									<h3>Footstep effect</h3>
+									<p>								
+									<video class ="image left" controls>
+										<source src="images/footsteps.mp4" type="video/mp4">
+										</video>
+										Using plane meshes with a fading shader and particles, I created a small system of "footprints" that follow the main character around when in "2D mode"</p>
+										<br />
+										<br />
+											<hr />
+											<h3>Scripting</h3>
+										<p>	I also integrated LUA into the project, it was almost only used to implement trigger behaviour. Here's a couple of snippets of the script and the code that the script calls to.							</p>
+											
+											<br /><br />
+											
+													<ul class="actions special">
+														<li><button class="btn toggle" data-toggle="collapse" data-target="#script">See Script</button></li>
+													</ul>
+													<pre class="collapse"  id= "script" ><code id= "script">
+function interact(j)
+	if  j == "materia" then
+		playSound("collectMateria")
+		--lm:ExecScriptDelayed("removeEntityByName(\"materia\")",100)
+	end
+
+	onInteraction(tostring(j))
+end
+
+function on_Finish_Game()
+	fadeOut(1)
+	lm:ExecScriptDelayed("UI(\"Final_Screen\")",1500)
+	lm:ExecScriptDelayed("Exit()",9000)
+end
+
+function on_Trigger_Enter(j,p)
+	if isPlayer(tostring(p)) then
+		if isDeadZone(tostring(j)) then 
+				sendMessageFallingDead()
+		elseif j == "end" then
+			fadeOut(1)
+			lm:ExecScriptDelayed("Exit()",9000)
+			lm:ExecScriptDelayed("UI(\"Final_Screen\")",1500)
+		elseif isCheckpoint(tostring(j)) then
+			getCheckpoint(tostring(j), tostring(p))
+		
+		else
+				if isAudioTrigger(tostring(j)) then
+				triggerAudio(tostring(j),tostring(p))
+			elseif isCutsceneTrigger(tostring(j),tostring(p))then
+				playCutscene(tostring(j))
+			elseif isAreaTrigger(tostring(j),tostring(p))then
+				enterArea(tostring(j))
+			else  
+				onInteractionTrigger(tostring(j), true)
+			end
+		end
+	elseif isWater(tostring(j)) then
+				sendContactWater(tostring(j))
+	end
+end
+
+function on_Trigger_Exit(j,p)
+	if isEnemyTrigger(tostring(j),tostring(p)) then
+		playTemple()
+	end
+	if isAreaTrigger(tostring(j),tostring(p))then
+				exitArea(tostring(j))
+	end
+	if isPlayer(tostring(p)) and not isPlayer(tostring(j)) then
+		onInteractionTrigger(tostring(j), false)
+	end
+end
+
+function throwCutscene(voice,voice_delay,music,music_delay)
+	--playSound(voice)
+	--playBSO(music)
+	lm:ExecScriptDelayed("playSound("..'"'..tostring(voice)..'"'..")",tonumber(voice_delay))
+	lm:ExecScriptDelayed("playBSO("..'"'..tostring(music)..'"'..")",tonumber(music_delay))
+end
+
+function startScene(name)
+	startCutscene(tostring(name))
+end	
+													</code></pre>
+													<ul class="actions special">
+														<li><button class="btn toggle" data-toggle="collapse" data-target="#smod">See Scripting Module</button></li>
+													</ul>
+													<pre class="collapse"  id= "smod" ><code id= "smod">
+void CModuleScripting::ThrowEvent(Event e, const std::string &event_name, float delay)
+{
+	switch (e) {
+	case TRIGGER_ENTER:
+	if (delay > 0) {//las funciones se nombran on_Trigger_Enter_nombreEntidadTrigger_player() o on_Trigger_Enter_nombreEntidadTrigger_enemy(nombreEntidadEnemigo)
+		execDelayed("on_Trigger_Enter(" + event_name + ")", delay);
+	}
+	else {
+		execCommand("on_Trigger_Enter(" + event_name + ")");
+	}
+	break;
+	case TRIGGER_EXIT:
+	if (delay > 0) {//las funciones se nombran on_Trigger_Exit_nombreEntidadTrigger_player() o on_Trigger_Enter_nombreEntidadTrigger_enemy(nombreEntidadEnemigo)
+		execDelayed("on_Trigger_Exit(" + event_name + ")", delay);
+	}
+	else {
+		//dbg("Trigger Exit %s\n", event_name.c_str());
+		execCommand("on_Trigger_Exit(" + event_name + ")");
+	}
+	break;
+	case COLUMN_PUSH:
+	execCommand("interact(" + event_name + ")");
+	break;
+	case INTERACT:
+	execCommand("interact(" + event_name+ ")" );
+	break;
+	case CHECKPOINT:
+	execCommand("saveCheckpoint( '" + event_name +"')");
+	break;
+	case INPUT:
+	execCommand("on_input()");
+	break;
+	case TELEPORT_PLAYER:
+	execCommand("teleportPlayer(" + event_name + ")");
+	break;
+	case CUTSCENE_AUDIO:
+	execCommand("throwCutscene(" + event_name + ")");
+	break;
+	case CUTSCENE:
+		execDelayed("startScene(" + event_name + ")",delay);
+	break;
+	case FINISH_GAME:
+	execCommand("on_Finish_Game()");
+	break;
+	}
+}
+
+void LM::Bind() {
+	//Binds the functions and classes  of Lua.
+	
+	  /*PUBLISH ALL CLASSES*/
+	  
+	  SLB::Class<LM>("LM", m)
+		  //a comment/documentation for the class [Optional]
+		  .comment("LUA LM class")
+		  //empty constructor, we can also wrapper constructor
+		  // with arguments using .constructor<TypeArg1,TypeArg2,...>()
+		  .constructor()
+		  //a method/function/value...
+		  .set("ExecScriptDelayed", &LM::ExecScriptDelayed)
+		  .set("ExecScript", &LM::ExecScript)
+		  .set("HelloWorld", &LM::HelloWorld)
+		  .set("motherlode", &LM::motherlode)
+		  .set("dbg", &LM::dbg)
+  
+  
+		  
+	  ;
+   
+	  SLB::Class <CHandle>("CHandle", m)
+		  .comment("CHandle wrapper")
+		  .constructor()
+		  .set("fromUnsigned", &CHandle::fromUnsigned)
+		  .set("destroy", &CHandle::destroy)
+		  .set("isValid", &CHandle::isValid)
+	  ;
+	  
+	  SLB::Class< VEC3 >("VEC3", m)
+		  .constructor<float, float, float>()
+		  .comment("the VEC3 class")
+		  .property("x", &VEC3::x)
+		  .property("y", &VEC3::y)
+		  .property("z", &VEC3::z)
+	  ;
+	  
+  
+	  SLB::Class <SoundEvent>("SoundEvent", m)
+		.comment("SoundEvent wrapper")
+		.set("isValid", &SoundEvent::isValid)
+		.set("restart", &SoundEvent::restart)
+		.set("stop", &SoundEvent::stop)
+		.set("setPaused", &SoundEvent::setPaused)
+		.set("setVolume", &SoundEvent::setVolume)
+		.set("setPitch", &SoundEvent::setPitch)
+		.set("setParameter", &SoundEvent::setParameter)
+		.set("getPaused", &SoundEvent::getPaused)
+		.set("getVolume", &SoundEvent::getVolume)
+		.set("getPitch", &SoundEvent::getPitch)
+		.set("getParameter", &SoundEvent::getParameter)
+		.set("is3D", &SoundEvent::is3D)
+		.set("isRelativeToCameraOnly", &SoundEvent::isRelativeToCameraOnly)
+		.set("setIsRelativeToCameraOnly", &SoundEvent::setIsRelativeToCameraOnly)
+		.set("isPlaying", &SoundEvent::isPlaying)
+		;
+  
+  
+	  /*PUBLISH ALL FUNCTIONS*/
+  
+	  //gets
+	  m->set("getPlayerHandle", SLB::FuncCall::create(&getPlayerHandle));
+	  m->set("getLocationByHandle", SLB::FuncCall::create(&getLocationByHandle));
+	  m->set("getHandleByName", SLB::FuncCall::create(&getHandleByName));
+	  m->set("getCheckpoint", SLB::FuncCall::create(&getCheckpoint));
+	  m->set("getLastCheckPoint", SLB::FuncCall::create(&getLastCheckPoint));
+  
+	  //spawns
+	  m->set("spawnEnemy", SLB::FuncCall::create(&spawnEnemy));
+	  m->set("spawn", SLB::FuncCall::create(&spawn));
+	  m->set("UI", SLB::FuncCall::create(&UI));
+  
+	  // Generic Interaction
+	  m->set("onInteractionTrigger", SLB::FuncCall::create(&onInteractionTrigger));
+	  m->set("onInteraction", SLB::FuncCall::create(&onInteraction));
+  
+	  //column
+	  m->set("sendInteractionMessage", SLB::FuncCall::create(&sendInteractionMessage));
+	  m->set("sendInteractionMsgToPlayer", SLB::FuncCall::create(&sendInteractionMsgToPlayer));
+	  m->set("removeTriggerByEntity", SLB::FuncCall::create(&removeTriggerByEntity));
+	  m->set("isColumn", SLB::FuncCall::create(&isColumn));
+  
+	  //Checks
+	  m->set("isCheckpoint", SLB::FuncCall::create(&isCheckpoint));
+	  m->set("isPlayer", SLB::FuncCall::create(&isPlayer));
+	  m->set("isWater", SLB::FuncCall::create(&isWater));
+	  //remove
+	  m->set("removeEntityByName", SLB::FuncCall::create(&removeEntityByName));
+  
+	  //Dead
+	  m->set("isDeadZone", SLB::FuncCall::create(&isDeadZone));
+	  m->set("sendMessageDead", SLB::FuncCall::create(&sendMessageDead));
+	  m->set("sendMessageFallingDead", SLB::FuncCall::create(&sendMessageFallingDead));
+  
+	  //End
+	  m->set("sendMessageEnd", SLB::FuncCall::create(&sendMessageEnd));
+	  m->set("Exit", SLB::FuncCall::create(&Exit));
+	  m->set("fadeOut", SLB::FuncCall::create(&fadeOut));
+	  m->set("fadeIn", SLB::FuncCall::create(&fadeIn));
+  
+  
+	  //utils
+	  m->set("teleportPlayer", SLB::FuncCall::create(&teleportPlayer));
+	  m->set("tp", SLB::FuncCall::create(&tp));
+  
+	  //sound
+	  m->set("playSound", SLB::FuncCall::create(&playSound));
+	  m->set("isAudioTrigger", SLB::FuncCall::create(&isAudioTrigger));
+	  m->set("triggerAudio", SLB::FuncCall::create(&triggerAudio));
+	  m->set("playBSO", SLB::FuncCall::create(&playBSO));
+	  m->set("sendContactWater", SLB::FuncCall::create(&sendContactWater));
+	  m->set("isEnemyTrigger", SLB::FuncCall::create(&isEnemyTrigger));
+	  m->set("playTemple", SLB::FuncCall::create(&playTemple));
+	  
+	  //cutscenes
+	  m->set("isCutsceneTrigger", SLB::FuncCall::create(&isCutsceneTrigger));
+	  m->set("playCutscene", SLB::FuncCall::create(&playCutscene));
+	  m->set("resurrect", SLB::FuncCall::create(&resurrect));
+	  m->set("startCutscene", SLB::FuncCall::create(&startCutscene));
+	  m->set("playPrebattle", SLB::FuncCall::create(&playPrebattle));
+	  //eventArea
+	  m->set("isAreaTrigger", SLB::FuncCall::create(&isAreaTrigger));
+	  m->set("enterArea", SLB::FuncCall::create(&enterArea));
+	  m->set("exitArea", SLB::FuncCall::create(&exitArea));
+  
+  }
+  
+  
+void getCheckpoint(string name, string Player)
+{
+  CEntity* e = getEntityByName(name);
+  CEntity* p = getEntityByName(Player);
+
+  if (!e->get<TCompCheckpoint>().isValid()) return;
+  if (!p->get<TCompPlayer>().isValid()) return;
+
+  TCompPlayer* c_p = e->get<TCompPlayer>();
+
+  TCompCheckpoint* c_check = e->get<TCompCheckpoint>();
+
+  TMsgCheckpoint msg;
+  msg.check_point = c_check->getCheckPoint();
+  msg.form_name = e->getName();
+  p->sendMsg(msg);
+  TMsgSaveState msg_save;
+  getObjectManager<CEntity>()->forEach([&msg_save](CEntity* e) {
+    e->sendMsg(msg_save);
+    });
+
+  CEngine::get().getUI().startAutoSave();
+
+  CHandle(e).destroy();
+}
+void triggerAudio(string handle, string p)
+{
+
+  if (p.compare("Player") != 0)return;
+  if(handle._Starts_with("audio_enemy")){
+    string currentGS = CEngine::get().getModules().getCurrentGS();
+    if (currentGS.compare("gameplay") != 0 && CApplication::get().getPrevState().compare("loading") != 0)return;
+    CEntity* ai = getEntityByName("Boss");
+    CAI_Controller* con = ai->get<CAI_Controller>();
+    CEngine::get().getSound().playBSO("guardiansBSO");
+    con->setGuardiansBSO(CEngine::get().getSound().getBSO());
+    return;
+  }
+  string aux = handle;
+  handle.erase(0, 6);
+  
+  if (handle._Starts_with("BSO")) {
+    handle.erase(0, 4);
+    CEngine::get().getSound().playBSO(handle);
+  }
+  else {
+    if (handle.compare("Tutorial_Quetz_003")==0) {
+      CEntity* pl = getEntityByName("Player");
+      TCompPlayer* player = pl->get<TCompPlayer>();
+      if (player->firstTimeProjectedCave) return;
+    }
+    CEngine::get().getSound().playEvent(handle);
+
+    //destroy trigger
+    CEntity* e = getEntityByName(aux);
+    CHandle(e).destroy();
+  }
+}
+
+													</code>
+													</pre>								
+							</section>
+
+					</div>
+
+								<!-- Footer -->
+								<footer id="footer">
+									<section class="split contact">
+										<section>
+											<h3>Email</h3>
+											<p><a href="mailto: marta@guerrerog.org">marta@guerrerog.org</a></p>
+										</section>
+										<section>
+											<h3>Social</h3>
+											<ul class="icons alt">
+												<li><a href="https://www.linkedin.com/in/marta-guerrero-pastor-890a7166/" class="icon brands fa-linkedin" target="_blank"><span class="label">Linkedin</span></a></li>
+												<li><a href="https://gitlab.com/martagp/portfolio" class="icon brands fa-gitlab" target="_blank"><span class="label">GitLab</span></a></li>
+											</ul>
+										</section>
+									</section>
+								</footer>
+			
+							<!-- Copyright -->
+								<div id="copyright">
+									<ul><li>&copy; Marta Guerrero Pastor Portfolio</li><li>Design: <a href="https://html5up.net">Made with HTML5 UP</a></li></ul>
+								</div>
+			
+
+			</div>
+
+		<!-- Scripts -->
+		<script>
+			$(document).ready(function(){
+			  $(".toggle").click(function(){
+				$(".collapse").collapse('toggle');
+			  });
+			});
+			</script>
+			<script src="assets/js/jquery.min.js"></script>
+			<script src="assets/js/jquery.scrollex.min.js"></script>
+			<script src="assets/js/jquery.scrolly.min.js"></script>
+			<script src="assets/js/browser.min.js"></script>
+			<script src="assets/js/breakpoints.min.js"></script>
+			<script src="assets/js/util.js"></script>
+			<script src="assets/js/main.js"></script>
+
+	</body>
+</html>
