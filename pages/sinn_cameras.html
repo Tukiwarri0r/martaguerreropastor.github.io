@@ -47,7 +47,7 @@
 								<h3>3D Camera</h3>
 									<p>								
 									<video class ="image left" controls>
-										<source src="images/3Dcamera.mp4" type="video/mp4">
+										<source src="../images/3Dcamera.mp4" type="video/mp4">
 									  </video>
 										Simple 3D camera that changes different curves when player is walking, running or in stealth mode. The camera doesn't look directly at the main character, but a little to their right.  </p>
 										<br />
@@ -422,7 +422,7 @@ int TCompCamera3D::checkQuadrant(float yaw)
 											<h3>2d Camera</h3>
 								<p>								
 								<video class ="image right" controls>
-									<source src="images/2Dcamera.mp4" type="video/mp4">
+									<source src="../images/2Dcamera.mp4" type="video/mp4">
 									</video>
 									This camera was trickier, as "2D mode" is actually controlling the main character's shadow. The camera had to always look at the shadow in the wall, but never lose sight of the 3D body. </p>
 									
@@ -523,7 +523,7 @@ void TCompCamera2D::renderCam2D(VEC3 wall_normal, VEC3 wall_point)
 											<h3>Moving boxes</h3>
 								<p>								
 								<video class ="image left" controls>
-									<source src="images/move boxes.mp4" type="video/mp4">
+									<source src="../images/move boxes.mp4" type="video/mp4">
 									</video>
 									Using physx, casting a ray to see if the main character in front of a pushable box, that box converts into a box controller, moving like the character does. Once it is released, it turns back into a dynamic object. </p>
 									
