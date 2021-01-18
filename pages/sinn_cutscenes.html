@@ -51,8 +51,8 @@
 												
 											</video>					
 									
-										Making a cutscene module from zero was tricky, I had to find a way to import all object movement from 3Dmax and translate it so our engine could actually "play" a cutscene with ease. To do this there were a few things to consider:
-										Hide the real character and use a decoy that will have all the animations (really saved some possible issues with PhysX) and the possibility of "local" cutscenes, those that will be repeated all throughout the game but in different areas.
+										Creating a cutscene module from zero was tricky, I had to find a way to import all object movement from 3Dmax and translate it so our engine could actually "play" a cutscene with ease. To do this there were a few things to consider:
+										Hide the real characters and using decoys that will have all the cutscene animations (really saved some possible issues with PhysX) and the possibility of "local" cutscenes, those that will be repeated all throughout the game but in different areas.
 										</p>
 										<p>	The module itself loads all the scenes, and some extra information into a map. If an event calls for a cutscene, the module will check the extra info to see if the cutscene requires hiding the character, some ui fading,
 										extra care with the camera once it's done, extra audio or light changes. 
